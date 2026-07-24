@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Medulla — snapshots</title>
+  <link rel="icon" type="image/svg+xml" href="/static/logo.svg">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  {{template "topbar" .}}
+  <main>
+    {{if .Error}}<div class="banner error">{{.Error}}</div>{{end}}
+    {{if .Notice}}<div class="banner notice">{{.Notice}}</div>{{end}}
+
+    <section class="panel">
+      <h2>Repositories ({{len .Repos}})</h2>
+      {{if .Repos}}
+      <div class="scroll">
+      <table>
+        <tr><th>name</th><th>type</th><th>settings</th></tr>
+        {{$c := .Cluster}}{{$cur := .Repo}}
+        {{range .Repos}}
+        <tr>
+          <td><a href="/c/{{$c}}/snapshots?repo={{.Name}}" {{if eq .Name $cur}}class="active-link"{{end}}>{{.Name}}</a></td>
+          <td>{{.Type}}</td>
+          <td>{{.Settings}}</td>
+        </tr>
+        {{end}}
+      </table>
+      </div>
+      {{else}}<p class="muted">No snapshot repositories registered.</p>{{end}}
+    </section>
+
+    {{if .CanSnap}}
+    <section class="panel">
+      <h2>Register repository</h2>
+      <form class="inline-form" method="post" action="/c/{{.Cluster}}/snapshots/repo-create">
+        <label>name <input name="reponame" required></label>
+        <label class="full">repository JSON
+          <textarea name="body" rows="4" required spellcheck="false" placeholder='{"type": "fs", "settings": {"location": "/backup"}}'></textarea>
+        </label>
+        <button type="submit" class="primary">Register</button>
+      </form>
+    </section>
+    {{end}}
+
+    {{if .Repo}}
+    <section class="panel">
+      <h2>Snapshots in {{.Repo}} ({{len .Snapshots}})</h2>
+      {{if .CanSnap}}
+      <form class="inline-form" method="post" action="/c/{{.Cluster}}/snapshots/create">
+        <input type="hidden" name="repo" value="{{.Repo}}">
+        <label>new snapshot <input name="name" required placeholder="snap-2026-07-22"></label>
+        <button type="submit" class="primary">Create</button>
+      </form>
+      {{end}}
+      {{if .Snapshots}}
+      <div class="scroll">
+      <table>
+        <tr><th>snapshot</th><th>state</th><th>started</th><th>indices</th>{{if .CanSnap}}<th>actions</th>{{end}}</tr>
+        {{$c := .Cluster}}{{$r := .Repo}}{{$w := .CanSnap}}
+        {{range .Snapshots}}
+        <tr>
+          <td>{{.Snapshot}}</td>
+          <td><span class="badge">{{.State}}</span></td>
+          <td>{{.StartTime}}</td>
+          <td>{{len .Indices}}</td>
+          {{if $w}}
+          <td class="actions">
+            <form method="post" action="/c/{{$c}}/snapshots/restore">
+              <input type="hidden" name="repo" value="{{$r}}"><input type="hidden" name="name" value="{{.Snapshot}}">
+              <button>restore</button>
+            </form>
+            <form method="post" action="/c/{{$c}}/snapshots/delete" class="confirm-inline">
+              <input type="hidden" name="repo" value="{{$r}}"><input type="hidden" name="name" value="{{.Snapshot}}">
+              <input name="confirm" placeholder="type name" autocomplete="off">
+              <button class="danger-text">delete</button>
+            </form>
+          </td>
+          {{end}}
+        </tr>
+        {{end}}
+      </table>
+      </div>
+      {{else}}<p class="muted">No snapshots in this repository.</p>{{end}}
+    </section>
+    {{end}}
+  </main>
+</body>
+</html>

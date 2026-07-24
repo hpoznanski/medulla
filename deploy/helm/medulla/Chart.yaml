@@ -1,0 +1,7 @@
+apiVersion: v2
+name: medulla
+description: Web admin UI for Elasticsearch and OpenSearch clusters with RBAC
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+home: https://github.com/hpoznanski/medulla

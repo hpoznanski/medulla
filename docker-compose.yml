@@ -1,0 +1,61 @@
+services:
+  medulla:
+    build: .
+    ports: ["8080:8080"]
+    volumes:
+      - ./config.dev.yaml:/etc/medulla/config.yaml:ro
+    depends_on:
+      es01: { condition: service_healthy }
+
+  # one-shot: snapshot volume must be writable by the elasticsearch uid
+  backup-init:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.13.4
+    user: root
+    entrypoint: ["chown", "-R", "1000:0", "/backup"]
+    volumes: [backup:/backup]
+
+  es01:
+    depends_on:
+      backup-init: { condition: service_completed_successfully }
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.13.4
+    environment:
+      - node.name=es01
+      - cluster.name=medulla-dev
+      - discovery.seed_hosts=es02
+      - cluster.initial_master_nodes=es01,es02
+      - xpack.security.enabled=false
+      - path.repo=/backup
+      - ES_JAVA_OPTS=-Xms512m -Xmx512m
+    volumes: [backup:/backup, es01-data:/usr/share/elasticsearch/data]
+    ports: ["9200:9200"]
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:9200/_cluster/health || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  es02:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.13.4
+    environment:
+      - node.name=es02
+      - cluster.name=medulla-dev
+      - discovery.seed_hosts=es01
+      - cluster.initial_master_nodes=es01,es02
+      - xpack.security.enabled=false
+      - path.repo=/backup
+      - ES_JAVA_OPTS=-Xms512m -Xmx512m
+    volumes: [backup:/backup, es02-data:/usr/share/elasticsearch/data]
+
+  opensearch:
+    image: opensearchproject/opensearch:2.13.0
+    environment:
+      - discovery.type=single-node
+      - DISABLE_SECURITY_PLUGIN=true
+      - DISABLE_INSTALL_DEMO_CONFIG=true
+      - OPENSEARCH_JAVA_OPTS=-Xms512m -Xmx512m
+    ports: ["9201:9200"]
+
+volumes:
+  backup:
+  es01-data:
+  es02-data:

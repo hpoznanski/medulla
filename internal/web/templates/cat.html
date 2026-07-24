@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Medulla — _cat/{{.Endpoint}}</title>
+  <link rel="icon" type="image/svg+xml" href="/static/logo.svg">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  {{template "topbar" .}}
+  <main>
+    <nav class="cat-endpoints panel">
+      {{$c := .Cluster}}{{$cur := .Endpoint}}
+      {{range .Endpoints}}
+        <a href="/c/{{$c}}/cat/{{.}}" {{if eq . $cur}}class="active"{{end}}>{{.}}</a>
+      {{end}}
+    </nav>
+
+    {{if .Error}}<div class="banner error">{{.Error}}</div>{{end}}
+
+    {{if .Result}}
+    <section class="panel">
+      <h2>_cat/{{.Endpoint}} ({{len .Result.Rows}})</h2>
+      {{if .Result.Rows}}
+      <div class="scroll">
+      <table>
+        <tr>{{range .Result.Columns}}<th>{{.}}</th>{{end}}</tr>
+        {{$cols := .Result.Columns}}
+        {{range .Result.Rows}}
+          {{$row := .}}
+          <tr>{{range $cols}}<td>{{index $row .}}</td>{{end}}</tr>
+        {{end}}
+      </table>
+      </div>
+      {{else}}
+      <p class="muted">No rows.</p>
+      {{end}}
+    </section>
+    {{end}}
+  </main>
+</body>
+</html>

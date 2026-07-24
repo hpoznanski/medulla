@@ -1,0 +1,121 @@
+# Example production values for Medulla.
+# Usage: helm install medulla deploy/helm/medulla -f values-example.yaml
+#
+# All ${VAR} references below are resolved at startup from environment
+# variables provided by `existingSecret` — no secret material lives in this
+# file, so it is safe to commit.
+
+replicaCount: 3
+
+image:
+  repository: ghcr.io/hpoznanski/medulla
+  tag: 0.1.0
+
+ingress:
+  enabled: true
+  className: nginx
+  host: medulla.internal.example.com
+  annotations:
+    cert-manager.io/cluster-issuer: internal-ca
+  tls:
+    - secretName: medulla-tls
+      hosts: [medulla.internal.example.com]
+
+# Name of a Secret in the release namespace. Created outside the chart, e.g.
+# from your eyaml pipeline. Expected keys (become env vars):
+#   SESSION_SECRET        - >=32 chars; "newkey,oldkey" during rotation
+#   LDAP_BIND_PASSWORD
+#   PROXY_EU_PASSWORD, PROXY_US_PASSWORD, PROXY_ASIA_PASSWORD, PROXY_STAGING_PASSWORD
+#   ADMIN_PASSWORD        - break-glass local admin
+existingSecret: medulla-secrets
+
+config:
+  listen: ":8080"
+  env: production
+
+  # Four clusters, each behind an authenticating reverse proxy (nginx/haproxy)
+  # doing basic auth. Medulla sends "Authorization: Basic ..." — the proxy
+  # validates it and forwards to ES. Identical config to native ES basic auth;
+  # only the credential owner differs. tls.ca_file is OPTIONAL — omit it and
+  # the system CA pool is used (fine for proxies with public/company-trusted
+  # certs). Set it only for private CAs, mounting the bundle via extraVolumes.
+  clusters:
+    - name: prod-eu
+      url: https://es-eu-proxy.internal:9443
+      auth:
+        type: basic
+        username: medulla
+        password: "${PROXY_EU_PASSWORD}"
+    - name: prod-us
+      url: https://es-us-proxy.internal:9443
+      auth:
+        type: basic
+        username: medulla
+        password: "${PROXY_US_PASSWORD}"
+    - name: prod-asia
+      url: https://es-asia-proxy.internal:9443
+      auth:
+        type: basic
+        username: medulla
+        password: "${PROXY_ASIA_PASSWORD}"
+      # tls:
+      #   ca_file: /etc/medulla/ca/private-ca.pem   # only if proxy cert is from a private CA
+    - name: staging
+      url: https://es-staging-proxy.internal:9443
+      auth:
+        type: basic
+        username: medulla
+        password: "${PROXY_STAGING_PASSWORD}"
+
+  roles:
+    admin:
+      clusters: ["*"]
+      permissions: [admin]
+    operator:
+      clusters: ["*"]
+      permissions: [view, index:write, alias:write, template:write, snapshot:write, cluster:write, rest:full]
+    developer:
+      clusters: [staging]
+      permissions: [view, rest:get]
+    viewer:
+      clusters: ["*"]
+      permissions: [view]
+
+  ldap:
+    url: ldaps://ldap.internal.example.com
+    bind_dn: cn=medulla,ou=services,dc=example,dc=com
+    bind_password: "${LDAP_BIND_PASSWORD}"
+    user_base: ou=people,dc=example,dc=com
+    user_filter: "(uid=%s)"
+    group_to_role:
+      "cn=es-admins,ou=groups,dc=example,dc=com": admin
+      "cn=sre,ou=groups,dc=example,dc=com": operator
+      "cn=developers,ou=groups,dc=example,dc=com": developer
+
+  # Break-glass account for when LDAP is down.
+  local_users:
+    - name: admin
+      password: "${ADMIN_PASSWORD}"
+      roles: [admin]
+
+  session:
+    secret: "${SESSION_SECRET}"
+    ttl: 8h
+
+  # Pod CIDR of the ingress controllers — enables real client IPs
+  # (X-Forwarded-For) for login rate limiting and audit logs.
+  trusted_proxies:
+    - 10.42.0.0/16
+
+resources:
+  requests: {cpu: 100m, memory: 96Mi}
+  limits: {memory: 256Mi}
+
+# Uncomment when any cluster uses tls.ca_file with a private CA:
+# extraVolumes:
+#   - name: es-ca
+#     configMap: {name: es-ca-bundle}
+# extraVolumeMounts:
+#   - name: es-ca
+#     mountPath: /etc/medulla/ca
+#     readOnly: true

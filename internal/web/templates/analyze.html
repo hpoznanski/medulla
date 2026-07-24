@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Medulla — analyze</title>
+  <link rel="icon" type="image/svg+xml" href="/static/logo.svg">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  {{template "topbar" .}}
+  <main>
+    {{if .Error}}<div class="banner error">{{.Error}}</div>{{end}}
+
+    <section class="panel">
+      <h2>_analyze playground</h2>
+      <form class="inline-form" method="post" action="/c/{{.Cluster}}/analyze">
+        <label>analyzer <input name="analyzer" value="{{.Analyzer}}" placeholder="standard"></label>
+        <label>index (optional) <input name="index" value="{{.Index}}" placeholder="uses index analyzers"></label>
+        <label class="full">text
+          <textarea name="text" rows="3" required>{{.Text}}</textarea>
+        </label>
+        <button type="submit" class="primary">Analyze</button>
+      </form>
+    </section>
+
+    {{if .Ran}}
+    <section class="panel">
+      <h2>Tokens ({{len .Tokens}})</h2>
+      {{if .Tokens}}
+      <div class="scroll">
+      <table>
+        <tr><th>#</th><th>token</th><th>type</th><th>position</th><th>offsets</th></tr>
+        {{range $i, $t := .Tokens}}
+        <tr><td>{{$i}}</td><td>{{$t.Token}}</td><td>{{$t.Type}}</td><td>{{$t.Position}}</td><td>{{$t.Start}}–{{$t.End}}</td></tr>
+        {{end}}
+      </table>
+      </div>
+      {{else}}<p class="muted">No tokens.</p>{{end}}
+    </section>
+    {{end}}
+  </main>
+</body>
+</html>

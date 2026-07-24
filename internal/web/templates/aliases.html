@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Medulla — aliases</title>
+  <link rel="icon" type="image/svg+xml" href="/static/logo.svg">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  {{template "topbar" .}}
+  <main>
+    {{if .Error}}<div class="banner error">{{.Error}}</div>{{end}}
+    {{if .Notice}}<div class="banner notice">{{.Notice}}</div>{{end}}
+
+    {{if .CanAlias}}
+    <section class="panel">
+      <h2>Add / remove alias</h2>
+      <form class="inline-form" method="post" action="/c/{{.Cluster}}/aliases">
+        <label>action
+          <select name="action"><option>add</option><option>remove</option></select>
+        </label>
+        <label>index <input name="index" required></label>
+        <label>alias <input name="alias" required></label>
+        <button type="submit" class="primary">Apply</button>
+      </form>
+    </section>
+    {{end}}
+
+    <section class="panel">
+      <h2>Aliases ({{len .Aliases}})</h2>
+      {{if .Aliases}}
+      <div class="scroll">
+      <table>
+        <tr><th>alias</th><th>index</th><th>filtered</th></tr>
+        {{range .Aliases}}
+        <tr><td>{{.Alias}}</td><td>{{.Index}}</td><td>{{if and .Filter (ne .Filter "-")}}yes{{else}}—{{end}}</td></tr>
+        {{end}}
+      </table>
+      </div>
+      {{else}}<p class="muted">No aliases.</p>{{end}}
+    </section>
+  </main>
+</body>
+</html>

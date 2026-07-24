@@ -1,0 +1,13 @@
+Medulla deployed.
+
+{{- if .Values.ingress.enabled }}
+URL: https://{{ .Values.ingress.host }}
+{{- else }}
+Port-forward: kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "medulla.fullname" . }} 8080:{{ .Values.service.port }}
+{{- end }}
+
+Checklist:
+- existingSecret set and contains SESSION_SECRET (>=32 chars; comma-separate two keys to rotate)
+- config.clusters filled; sensitive values referenced as ${ENV_VAR} keys present in the secret
+- config.trusted_proxies covers your ingress pod CIDR (real client IPs for rate limiting/audit)
+- replicas share the same SESSION_SECRET automatically (same secret) - no sticky sessions needed

@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Medulla — {{.Cluster}} settings</title>
+  <link rel="icon" type="image/svg+xml" href="/static/logo.svg">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  {{template "topbar" .}}
+  <main>
+    {{if .Error}}<div class="banner error">{{.Error}}</div>{{end}}
+    {{if .Notice}}<div class="banner notice">{{.Notice}}</div>{{end}}
+
+    {{if .CanCluster}}
+    <section class="panel">
+      <h2>Set persistent setting</h2>
+      <form class="inline-form" method="post" action="/c/{{.Cluster}}/settings">
+        <label class="grow">key <input name="key" required placeholder="cluster.routing.allocation.enable"></label>
+        <label>value <input name="value" placeholder="empty = reset to default"></label>
+        <button type="submit" class="primary">Apply</button>
+      </form>
+    </section>
+    {{end}}
+
+    <section class="panel">
+      <h2>Persistent ({{len .Persistent}})</h2>
+      {{if .Persistent}}
+      <div class="scroll"><table>
+        <tr><th>setting</th><th>value</th></tr>
+        {{range .Persistent}}<tr><td>{{.Key}}</td><td>{{.Value}}</td></tr>{{end}}
+      </table></div>
+      {{else}}<p class="muted">No persistent settings — cluster runs on defaults.</p>{{end}}
+    </section>
+
+    <section class="panel">
+      <h2>Transient ({{len .Transient}})</h2>
+      {{if .Transient}}
+      <div class="scroll"><table>
+        <tr><th>setting</th><th>value</th></tr>
+        {{range .Transient}}<tr><td>{{.Key}}</td><td>{{.Value}}</td></tr>{{end}}
+      </table></div>
+      {{else}}<p class="muted">No transient settings.</p>{{end}}
+    </section>
+
+    <section class="panel">
+      <details>
+        <summary class="muted">Defaults ({{len .Defaults}})</summary>
+        <div class="scroll"><table>
+          <tr><th>setting</th><th>value</th></tr>
+          {{range .Defaults}}<tr><td>{{.Key}}</td><td>{{.Value}}</td></tr>{{end}}
+        </table></div>
+      </details>
+    </section>
+  </main>
+</body>
+</html>

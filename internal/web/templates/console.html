@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Medulla — console</title>
+  <link rel="icon" type="image/svg+xml" href="/static/logo.svg">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  {{template "topbar" .}}
+  <main>
+    {{if .Error}}<div class="banner error">{{.Error}}</div>{{end}}
+
+    <section class="panel">
+      <h2>REST console {{if not .RestFull}}<span class="chip">read-only</span>{{end}}</h2>
+      <form class="inline-form console-form" method="post" action="/c/{{.Cluster}}/console">
+        <label>method
+          <select name="method">
+            <option {{if eq .Method "GET"}}selected{{end}}>GET</option>
+            <option {{if eq .Method "HEAD"}}selected{{end}}>HEAD</option>
+            {{if .RestFull}}
+            <option {{if eq .Method "POST"}}selected{{end}}>POST</option>
+            <option {{if eq .Method "PUT"}}selected{{end}}>PUT</option>
+            <option {{if eq .Method "DELETE"}}selected{{end}}>DELETE</option>
+            {{end}}
+          </select>
+        </label>
+        <label class="grow">path
+          <input name="path" value="{{.Path}}" required placeholder="/_cluster/health?level=indices">
+        </label>
+        <button type="submit" class="primary">Send</button>
+        {{if .RestFull}}
+        <label class="full">body (POST/PUT)
+          <textarea name="body" rows="6" spellcheck="false" placeholder='{"query": ...}'>{{.Body}}</textarea>
+        </label>
+        {{end}}
+      </form>
+    </section>
+
+    {{if .RespStatus}}
+    <section class="panel">
+      <h2>Response — HTTP {{.RespStatus}}</h2>
+      <div class="scroll"><pre class="json">{{.RespBody}}</pre></div>
+    </section>
+    {{end}}
+  </main>
+</body>
+</html>

@@ -1,0 +1,30 @@
+# Dev config for manual testing. Two local users:
+#   reader / readerpw  -> viewer (read-only)
+#   writer / writerpw  -> operator (write)
+listen: ":8080"
+
+clusters:
+  - name: dev-es
+    url: http://es01:9200
+  - name: dev-opensearch
+    url: http://opensearch:9200
+
+roles:
+  viewer:
+    clusters: ["*"]
+    permissions: [view]
+  operator:
+    clusters: ["*"]
+    permissions: [view, index:write, alias:write, template:write, snapshot:write, cluster:write, rest:full]
+
+local_users:
+  - name: reader
+    password: readerpw
+    roles: [viewer]
+  - name: writer
+    password: writerpw
+    roles: [operator]
+
+session:
+  ttl: 12h
+  insecure_cookie: true   # dev stack runs plain HTTP

@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Medulla — clusters</title>
+  <link rel="icon" type="image/svg+xml" href="/static/logo.svg">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <span class="brand"><span class="accent">◉</span> Medulla</span>
+    <span class="user">
+      {{.User}}
+      {{range .Roles}}<span class="chip">{{.}}</span>{{end}}
+      <form method="post" action="/logout"><button class="linklike">sign out</button></form>
+    </span>
+  </header>
+
+  <main>
+    <section class="clusters-grid">
+      {{range .Statuses}}
+      <a class="cluster-card {{if .Error}}unreachable{{end}}" href="/c/{{.Name}}/overview">
+        <span class="cluster-name">
+          <span class="dot {{if .Error}}crit{{else}}{{.Status}}{{end}}"></span>
+          {{.Name}}
+        </span>
+        {{if .Error}}
+        <span class="cluster-error">{{.Error}}</span>
+        {{else}}
+        <span class="cluster-meta">{{.Flavor}} {{.Version}}</span>
+        <span class="cluster-stats">
+          <span><b>{{.Nodes}}</b> nodes</span>
+          <span><b>{{.Indices}}</b> indices</span>
+          <span><b>{{.Docs}}</b> docs</span>
+          <span><b>{{.Shards}}</b> shards</span>
+          {{if .Unassigned}}<span class="crit-text"><b>{{.Unassigned}}</b> unassigned</span>{{end}}
+        </span>
+        {{end}}
+      </a>
+      {{end}}
+    </section>
+  </main>
+</body>
+</html>

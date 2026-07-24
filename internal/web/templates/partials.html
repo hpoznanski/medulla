@@ -1,0 +1,33 @@
+{{define "topbar"}}
+<header class="topbar">
+  <span class="brand"><span class="accent">◉</span> Medulla</span>
+  {{$current := .Cluster}}{{$nav := .Nav}}
+  <details class="cluster-switcher">
+    <summary><span class="dot"></span>{{.Cluster}} ▾</summary>
+    <nav>
+      {{range .Clusters}}
+        {{if ne . $current}}
+        <a href="/c/{{.}}/{{if eq $nav "cat"}}cat/shards{{else}}{{$nav}}{{end}}">{{.}}</a>
+        {{end}}
+      {{end}}
+      <a class="all-link" href="/">all clusters…</a>
+    </nav>
+  </details>
+  <nav class="pages">
+    <a href="/c/{{.Cluster}}/overview" {{if eq .Nav "overview"}}class="active"{{end}}>overview</a>
+    <a href="/c/{{.Cluster}}/indices" {{if eq .Nav "indices"}}class="active"{{end}}>indices</a>
+    <a href="/c/{{.Cluster}}/aliases" {{if eq .Nav "aliases"}}class="active"{{end}}>aliases</a>
+    <a href="/c/{{.Cluster}}/templates" {{if eq .Nav "templates"}}class="active"{{end}}>templates</a>
+    <a href="/c/{{.Cluster}}/snapshots" {{if eq .Nav "snapshots"}}class="active"{{end}}>snapshots</a>
+    <a href="/c/{{.Cluster}}/analyze" {{if eq .Nav "analyze"}}class="active"{{end}}>analyze</a>
+    <a href="/c/{{.Cluster}}/settings" {{if eq .Nav "settings"}}class="active"{{end}}>settings</a>
+    <a href="/c/{{.Cluster}}/cat/shards" {{if eq .Nav "cat"}}class="active"{{end}}>cat</a>
+    {{if .CanConsole}}<a href="/c/{{.Cluster}}/console" {{if eq .Nav "console"}}class="active"{{end}}>console</a>{{end}}
+  </nav>
+  <span class="user">
+    {{.User}}
+    {{range .Roles}}<span class="chip">{{.}}</span>{{end}}
+    <form method="post" action="/logout"><button class="linklike">sign out</button></form>
+  </span>
+</header>
+{{end}}

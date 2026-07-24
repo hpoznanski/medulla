@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Medulla — {{.Cluster}} indices</title>
+  <link rel="icon" type="image/svg+xml" href="/static/logo.svg">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  {{template "topbar" .}}
+  <main>
+    {{if .Error}}<div class="banner error">{{.Error}}</div>{{end}}
+    {{if .Notice}}<div class="banner notice">{{.Notice}}</div>{{end}}
+
+    {{if .CanWrite}}
+    <section class="panel">
+      <h2>Create index</h2>
+      <form class="inline-form" method="post" action="/c/{{.Cluster}}/indices">
+        <label>name <input name="name" required pattern="[a-z0-9._-]+"></label>
+        <label>shards <input name="shards" type="number" value="1" min="1" max="1024"></label>
+        <label>replicas <input name="replicas" type="number" value="1" min="0" max="10"></label>
+        <button type="submit" class="primary">Create</button>
+      </form>
+    </section>
+    {{end}}
+
+    <section class="panel">
+      <h2>Indices ({{len .Indices}})</h2>
+      <div class="scroll">
+      <table>
+        <tr>
+          <th>index</th><th>health</th><th>state</th><th>pri</th><th>rep</th><th>docs</th><th>size</th>
+          {{if .CanWrite}}<th>actions</th>{{end}}
+        </tr>
+        {{$c := .Cluster}}{{$w := .CanWrite}}
+        {{range .Indices}}
+        <tr>
+          <td><a href="/c/{{$c}}/indices/{{.Index}}">{{.Index}}</a></td>
+          <td><span class="badge health-{{.Health}}">{{.Health}}</span></td>
+          <td>{{.Status}}</td>
+          <td>{{.Pri}}</td>
+          <td>{{.Rep}}</td>
+          <td>{{.DocsCount}}</td>
+          <td>{{.StoreSize}}</td>
+          {{if $w}}
+          <td class="actions">
+            {{$i := .Index}}
+            {{if eq .Status "close"}}
+              <form method="post" action="/c/{{$c}}/indices/{{$i}}/open"><button>open</button></form>
+            {{else}}
+              <form method="post" action="/c/{{$c}}/indices/{{$i}}/refresh"><button>refresh</button></form>
+              <form method="post" action="/c/{{$c}}/indices/{{$i}}/flush"><button>flush</button></form>
+              <form method="post" action="/c/{{$c}}/indices/{{$i}}/forcemerge"><button>forcemerge</button></form>
+              <form method="post" action="/c/{{$c}}/indices/{{$i}}/close"><button>close</button></form>
+            {{end}}
+          </td>
+          {{end}}
+        </tr>
+        {{end}}
+      </table>
+      </div>
+    </section>
+  </main>
+</body>
+</html>

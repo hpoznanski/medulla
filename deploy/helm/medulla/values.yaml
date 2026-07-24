@@ -1,0 +1,86 @@
+replicaCount: 2
+
+image:
+  repository: ghcr.io/hpoznanski/medulla
+  tag: ""            # defaults to chart appVersion
+  pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+
+service:
+  type: ClusterIP
+  port: 8080
+
+ingress:
+  enabled: false
+  className: nginx
+  host: medulla.example.com
+  annotations: {}
+  tls: []
+  # tls:
+  #   - secretName: medulla-tls
+  #     hosts: [medulla.example.com]
+
+# Medulla config.yaml rendered into a ConfigMap verbatim.
+# Reference sensitive values as ${ENV_VAR} and provide them via existingSecret.
+config:
+  listen: ":8080"
+  env: production
+  clusters: []
+  # clusters:
+  #   - name: prod-eu
+  #     url: https://es-prod-eu:9200
+  #     auth: {type: basic, username: medulla, password: "${ES_PROD_EU_PASSWORD}"}
+  roles: {}
+  # roles:
+  #   admin: {clusters: ["*"], permissions: [admin]}
+  # ldap:
+  #   url: ldaps://ldap.example.com
+  #   bind_dn: "${LDAP_BIND_DN}"
+  #   bind_password: "${LDAP_BIND_PASSWORD}"
+  #   user_base: ou=people,dc=example,dc=com
+  #   group_to_role: {}
+  session:
+    secret: "${SESSION_SECRET}"
+    ttl: 12h
+  trusted_proxies: []
+  # trusted_proxies: ["10.0.0.0/8"]   # ingress CIDRs -> real client IPs
+
+# Name of an existing Secret whose keys become environment variables
+# (SESSION_SECRET, LDAP_BIND_PASSWORD, ES_*_PASSWORD, ...). Create it from
+# your eyaml pipeline; the chart never renders secret values itself.
+existingSecret: ""
+
+resources:
+  requests: {cpu: 50m, memory: 64Mi}
+  limits: {memory: 256Mi}
+
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1
+
+# Spread replicas across zones by default.
+topologySpreadConstraints:
+  - maxSkew: 1
+    topologyKey: topology.kubernetes.io/zone
+    whenUnsatisfiable: ScheduleAnyway
+    labelSelector:
+      matchLabels:
+        app.kubernetes.io/name: medulla
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
+podAnnotations: {}
+extraEnv: []
+
+# Extra mounts, e.g. a custom CA bundle from a ConfigMap for cluster tls.ca_file:
+# extraVolumes:
+#   - name: es-ca
+#     configMap: {name: es-ca-bundle}
+# extraVolumeMounts:
+#   - name: es-ca
+#     mountPath: /etc/medulla/ca
+#     readOnly: true
+extraVolumes: []
+extraVolumeMounts: []

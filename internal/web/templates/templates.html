@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Medulla — templates</title>
+  <link rel="icon" type="image/svg+xml" href="/static/logo.svg">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  {{template "topbar" .}}
+  <main>
+    {{if .Error}}<div class="banner error">{{.Error}}</div>{{end}}
+    {{if .Notice}}<div class="banner notice">{{.Notice}}</div>{{end}}
+
+    <section class="panel">
+      <h2>Index templates ({{len .Templates}})</h2>
+      {{if .Templates}}
+      <div class="scroll">
+      <table>
+        <tr><th>name</th><th>index patterns</th>{{if .CanEdit}}<th></th>{{end}}</tr>
+        {{$c := .Cluster}}{{$e := .CanEdit}}
+        {{range .Templates}}
+        <tr>
+          <td><a href="/c/{{$c}}/templates?name={{.Name}}">{{.Name}}</a></td>
+          <td>{{range .Patterns}}{{.}} {{end}}</td>
+          {{if $e}}
+          <td class="actions">
+            <form method="post" action="/c/{{$c}}/templates/{{.Name}}/delete"><button class="danger-text">delete</button></form>
+          </td>
+          {{end}}
+        </tr>
+        {{end}}
+      </table>
+      </div>
+      {{else}}<p class="muted">No index templates.</p>{{end}}
+    </section>
+
+    {{if .Detail}}
+    <section class="panel">
+      <h2>{{.Selected}}</h2>
+      <div class="scroll"><pre class="json">{{.Detail}}</pre></div>
+    </section>
+    {{end}}
+
+    {{if .CanEdit}}
+    <section class="panel">
+      <h2>Create / update template</h2>
+      <form class="inline-form" method="post" action="/c/{{.Cluster}}/templates">
+        <label>name <input name="name" required value="{{.Selected}}"></label>
+        <label class="full">template JSON
+          <textarea name="body" rows="10" required spellcheck="false" placeholder='{"index_patterns": ["logs-*"], "template": {"settings": {"number_of_shards": 1}}}'></textarea>
+        </label>
+        <button type="submit" class="primary">Save</button>
+      </form>
+    </section>
+    {{end}}
+  </main>
+</body>
+</html>

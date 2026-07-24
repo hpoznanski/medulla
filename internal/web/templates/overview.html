@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Medulla — {{.Cluster}}</title>
+  <link rel="icon" type="image/svg+xml" href="/static/logo.svg">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  {{template "topbar" .}}
+
+  <main>
+  {{if .Error}}
+    <div class="banner error">{{.Error}}</div>
+  {{else}}
+    <section class="stats">
+      <div class="stat"><span class="k">Health</span><span class="v health-{{.Overview.Health.Status}}">{{.Overview.Health.Status}}</span></div>
+      <div class="stat"><span class="k">Version</span><span class="v">{{.Info.Flavor}} {{.Info.Version}}</span></div>
+      <div class="stat"><span class="k">Nodes</span><span class="v">{{.Overview.Health.NumberOfNodes}}</span></div>
+      <div class="stat"><span class="k">Active shards</span><span class="v">{{.Overview.Health.ActiveShards}}</span></div>
+      <div class="stat"><span class="k">Relocating</span><span class="v">{{.Overview.Health.RelocatingShards}}</span></div>
+      <div class="stat"><span class="k">Unassigned</span><span class="v {{if .Overview.Health.UnassignedShards}}health-red{{end}}">{{.Overview.Health.UnassignedShards}}</span></div>
+    </section>
+
+    <section class="panel">
+      <h2>Nodes</h2>
+      <div class="scroll">
+      <table>
+        <tr><th>node</th><th>ip</th><th>roles</th><th>heap</th><th>disk</th><th>cpu</th><th>load</th></tr>
+        {{range .Overview.Nodes}}
+        <tr>
+          <td>{{.Name}}{{if .Master}} ★{{end}}</td>
+          <td>{{.IP}}</td>
+          <td>{{range .Roles}}{{.}} {{end}}</td>
+          <td><meter min="0" max="100" high="80" value="{{.HeapPercent}}"></meter> {{.HeapPercent}}%</td>
+          <td><meter min="0" max="100" high="85" value="{{.DiskPercent}}"></meter> {{.DiskPercent}}%</td>
+          <td>{{.CPUPercent}}%</td>
+          <td>{{.Load}}</td>
+        </tr>
+        {{end}}
+      </table>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>Shard allocation</h2>
+      <div class="shardgrid scroll">
+        {{range .NodeShards}}
+        <div class="shardrow">
+          <span class="node{{if eq .Node "unassigned"}} crit{{end}}">{{.Node}}</span>
+          <span class="shards">
+            {{range .Shards}}
+            <span class="shard {{if eq .State "UNASSIGNED"}}u{{else if eq .State "RELOCATING"}}relo{{else if eq .PriRep "p"}}p{{else}}r{{end}}">{{.Shard}}<span class="tip">
+              <b>{{.Index}}</b> · shard {{.Shard}} · {{if eq .PriRep "p"}}primary{{else}}replica{{end}}<br>
+              state: {{.State}}{{if .Node}} on {{.Node}}{{end}}<br>
+              {{if .Docs}}docs: {{.Docs}} · size: {{.Store}}<br>{{end}}
+              {{if .Reason}}<span class="tip-crit">reason: {{.Reason}}</span><br>{{end}}
+              {{if .Details}}<span class="tip-crit">{{.Details}}</span><br>{{end}}
+              {{if .At}}since: {{.At}}{{end}}
+            </span></span>
+            {{end}}
+          </span>
+        </div>
+        {{end}}
+      </div>
+      <p class="legend">
+        <span class="shard p">n</span> primary
+        <span class="shard r">n</span> replica
+        <span class="shard relo">n</span> relocating
+        <span class="shard u">n</span> unassigned
+      </p>
+    </section>
+
+    {{if .Explains}}
+    <section class="panel danger-zone">
+      <h2>Unassigned shards — why?</h2>
+      {{range .Explains}}
+      <div class="explain-group">
+        <p class="explain-shards">{{range .Shards}}<span class="badge health-red">{{.}}</span> {{end}}</p>
+        <p class="explain-text">{{.Explanation}}</p>
+        <details>
+          <summary class="muted">full allocation explain JSON (first shard of this group)</summary>
+          <div class="scroll"><pre class="json">{{.RawJSON}}</pre></div>
+        </details>
+      </div>
+      {{end}}
+      {{if .ExplainCap}}<p class="muted">…and {{.ExplainCap}} more unassigned shards not analyzed (limit).</p>{{end}}
+    </section>
+    {{end}}
+  {{end}}
+  </main>
+</body>
+</html>

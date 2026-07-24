@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Medulla — {{.Index}}</title>
+  <link rel="icon" type="image/svg+xml" href="/static/logo.svg">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  {{template "topbar" .}}
+  <main>
+    {{if .Error}}<div class="banner error">{{.Error}}</div>{{end}}
+    {{if .Notice}}<div class="banner notice">{{.Notice}}</div>{{end}}
+
+    <section class="panel">
+      <h2>{{.Index}} — settings, mappings, aliases</h2>
+      <div class="scroll"><pre class="json">{{.Detail}}</pre></div>
+    </section>
+
+    {{if .CanWrite}}
+    <section class="panel danger-zone">
+      <h2>Delete index</h2>
+      <form class="inline-form" method="post" action="/c/{{.Cluster}}/indices/{{.Index}}/delete">
+        <label>type <code>{{.Index}}</code> to confirm
+          <input name="confirm" autocomplete="off" placeholder="{{.Index}}">
+        </label>
+        <button type="submit" class="danger">Delete permanently</button>
+      </form>
+    </section>
+    {{end}}
+  </main>
+</body>
+</html>
