@@ -4,14 +4,14 @@
 
 # ◉ Medulla
 
-Web admin UI for **Elasticsearch** and **OpenSearch** clusters. A spiritual successor to [Cerebro](https://github.com/lmenezes/cerebro) — same job, plus the things Cerebro never had: **multi-cluster management, built-in RBAC, LDAP auth, audit logging** — in a single ~10 MB static binary.
+Web admin UI for **Elasticsearch** and **OpenSearch** clusters: **multi-cluster management, built-in RBAC, LDAP auth, audit logging** — in a single ~10 MB static binary.
 
 Medulla is the brain stem: small, always on, controls the vital functions.
 
 ## Features
 
 - **Clusters landing page** — every cluster at a glance: health, version/flavor, nodes, indices, docs, unassigned shards. Cluster switcher on every page.
-- **Overview** — node stats (heap/disk/CPU), Cerebro-style shard allocation grid with per-shard hover details, and an *allocation explain* panel that shows the actual root cause for every unassigned shard (deciders parsed, grouped by cause).
+- **Overview** — node stats (heap/disk/CPU), a visual shard allocation grid with per-shard hover details, and an *allocation explain* panel that shows the actual root cause for every unassigned shard (deciders parsed, grouped by cause).
 - **Index management** — create, delete (type-name-to-confirm), open/close, refresh, flush, force-merge; settings/mappings/aliases detail view.
 - **Aliases** — list, add, remove.
 - **Index templates** — list, inspect, create/update via JSON editor, delete.
@@ -78,16 +78,22 @@ roles:
 - CSRF: SameSite=Lax + Origin check on all non-GET requests.
 - Audit: every login attempt, denial, and state-changing request logged as JSON with user/roles/method/path/outcome/IP — never request bodies.
 
-## Quick start
+## Demo
+
+Try everything locally in one command — Medulla plus a 2-node ES 8.13 cluster and an OpenSearch 2.13 node, snapshot repository prewired:
 
 ```sh
 docker-compose up -d --build
-# → http://localhost:8080
-#   reader / readerpw   (viewer: read-only)
-#   writer / writerpw   (operator: full ops)
 ```
 
-Dev stack: Medulla + 2-node ES 8.13 + OpenSearch 2.13, snapshot repo path prewired.
+Open http://localhost:8080 and sign in as:
+
+| user | password | role |
+|---|---|---|
+| `reader` | `readerpw` | viewer — read-only everywhere |
+| `writer` | `writerpw` | operator — full cluster operations |
+
+The two accounts demonstrate RBAC: log in as each and compare what the UI offers. The demo stack is for evaluation only — plaintext demo credentials, no TLS.
 
 ## Configuration
 
@@ -108,12 +114,12 @@ session:
 
 Run: `medulla -config /etc/medulla/config.yaml`. Logs are JSON on stdout. `/healthz` for probes.
 
-## Kubernetes
+## Production deployment (Kubernetes)
 
-Helm chart in [`deploy/helm/medulla`](deploy/helm/medulla) — hardened defaults (nonroot, read-only rootfs, no capabilities, no SA token), config-checksum rollouts, zone spreading, PDB. Secrets come from an `existingSecret` you create (e.g. from an eyaml pipeline); the chart never renders secret material.
+Helm chart in [`deploy/helm/medulla`](deploy/helm/medulla) — hardened defaults (nonroot, read-only rootfs, no capabilities, no SA token), config-checksum rollouts, zone spreading, PDB. See the [chart README](deploy/helm/medulla/README.md) for installation, secret handling, and the security model.
 
 ```sh
-helm install medulla deploy/helm/medulla -f deploy/helm/medulla/values-example.yaml
+helm install medulla oci://ghcr.io/hpoznanski/charts/medulla --version 0.1.0 -f my-values.yaml
 ```
 
 ## Development
@@ -126,6 +132,12 @@ go vet ./... && gofmt -l . # hygiene
 
 Layout: `internal/config` (YAML + interpolation + validation), `internal/auth` (LDAP, local users, sessions, rate limit), `internal/rbac` (permission checks), `internal/es` (thin REST client, flavor detection), `internal/web` (handlers, embedded templates/CSS).
 
+## Contributing
+
+Issues and merge requests are welcome — bug reports, features, docs. Keep the dependency philosophy in mind: PRs adding dependencies need a strong justification.
+
 ## License
 
-TBD.
+[AGPL-3.0](LICENSE). © Hubert Poznanski.
+
+In short: use it, self-host it, modify it, contribute back — freely. If you distribute a modified version or run one as a service for others, your changes must stay open under the same license.

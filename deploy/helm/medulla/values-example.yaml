@@ -22,7 +22,8 @@ ingress:
       hosts: [medulla.internal.example.com]
 
 # Name of a Secret in the release namespace. Created outside the chart, e.g.
-# from your eyaml pipeline. Expected keys (become env vars):
+# by whatever secret tooling you use (Vault, SOPS, External Secrets, sealed
+# secrets, cloud secret managers). Expected keys (become env vars):
 #   SESSION_SECRET        - >=32 chars; "newkey,oldkey" during rotation
 #   LDAP_BIND_PASSWORD
 #   PROXY_EU_PASSWORD, PROXY_US_PASSWORD, PROXY_ASIA_PASSWORD, PROXY_STAGING_PASSWORD

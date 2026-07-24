@@ -48,7 +48,7 @@ config:
 
 # Name of an existing Secret whose keys become environment variables
 # (SESSION_SECRET, LDAP_BIND_PASSWORD, ES_*_PASSWORD, ...). Create it from
-# your eyaml pipeline; the chart never renders secret values itself.
+# your secret-management tooling; the chart never renders secret values itself.
 existingSecret: ""
 
 resources:

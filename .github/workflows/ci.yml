@@ -21,6 +21,14 @@ jobs:
       - run: go vet ./...
       - run: go test -race -cover ./...
       - run: go build ./cmd/medulla
+      - name: govulncheck
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+          govulncheck ./...
+      - name: helm lint
+        run: |
+          helm lint deploy/helm/medulla
+          helm template t deploy/helm/medulla -f deploy/helm/medulla/values-example.yaml > /dev/null
 
   image:
     # Push the image only for version tags; PRs and branch pushes just test.
@@ -53,3 +61,19 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+
+  chart:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: push chart to GHCR (OCI)
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          echo "${{ secrets.GITHUB_TOKEN }}" | helm registry login ghcr.io -u ${{ github.actor }} --password-stdin
+          helm package deploy/helm/medulla --version "$VERSION" --app-version "$VERSION"
+          helm push "medulla-$VERSION.tgz" oci://ghcr.io/${{ github.repository_owner }}/charts
