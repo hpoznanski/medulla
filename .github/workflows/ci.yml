@@ -25,10 +25,10 @@ jobs:
         run: |
           go install golang.org/x/vuln/cmd/govulncheck@latest
           govulncheck ./...
-      - name: helm lint
+      - name: helm lint and render tests
         run: |
           helm lint deploy/helm/medulla
-          helm template t deploy/helm/medulla -f deploy/helm/medulla/values-example.yaml > /dev/null
+          ./deploy/helm/medulla/tests/render_test.sh
 
   image:
     # Push the image only for version tags; PRs and branch pushes just test.

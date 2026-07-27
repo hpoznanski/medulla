@@ -72,6 +72,8 @@ nodeSelector: {}
 tolerations: []
 affinity: {}
 podAnnotations: {}
+# Non-sensitive values only: extraEnv renders verbatim into the Deployment
+# spec, readable by anyone with get-pods RBAC. Secrets belong in existingSecret.
 extraEnv: []
 
 # Extra mounts, e.g. a custom CA bundle from a ConfigMap for cluster tls.ca_file:

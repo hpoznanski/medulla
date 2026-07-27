@@ -2,7 +2,32 @@
 
 Deploys [Medulla](../../../README.md) — web admin UI for Elasticsearch/OpenSearch with RBAC.
 
-## Install
+## What you need to start
+
+1. A Kubernetes cluster and Helm 3.8+.
+2. Reachable ES/OpenSearch endpoints (direct or behind a reverse proxy).
+3. One Kubernetes Secret with your credentials (see [How secrets work](#how-secrets-work)).
+
+Minimal working `my-values.yaml`:
+
+```yaml
+existingSecret: medulla-secrets      # keys: SESSION_SECRET, ADMIN_PASSWORD, ES_PROD_PASSWORD
+
+config:
+  env: production
+  clusters:
+    - name: prod
+      url: https://es-prod.internal:9200
+      auth: {type: basic, username: medulla, password: "${ES_PROD_PASSWORD}"}
+  roles:
+    admin: {clusters: ["*"], permissions: [admin]}
+  local_users:
+    - {name: admin, password: "${ADMIN_PASSWORD}", roles: [admin]}
+  session:
+    secret: "${SESSION_SECRET}"
+```
+
+Install:
 
 ```sh
 # from the published OCI registry
@@ -10,9 +35,65 @@ helm install medulla oci://ghcr.io/hpoznanski/charts/medulla --version 0.1.0 -f 
 
 # or from a repo checkout
 helm install medulla deploy/helm/medulla -f my-values.yaml
+
+# no ingress yet? try it via port-forward
+kubectl port-forward svc/medulla 8080:8080   # → http://localhost:8080
 ```
 
-Start from [`values-example.yaml`](values-example.yaml) — a complete, commit-safe production example (4 clusters behind authenticating proxies, LDAP, roles, break-glass admin).
+For a full production example (4 clusters, LDAP, all roles, ingress with TLS) see [`values-example.yaml`](values-example.yaml) — commit-safe, no secret material.
+
+## Adding clusters
+
+Each entry under `config.clusters` is one cluster in the UI. Add an entry, add its credential key to the Secret, `helm upgrade` — pods roll automatically (config checksum).
+
+```yaml
+config:
+  clusters:
+    # no auth (dev, or network-trusted)
+    - name: sandbox
+      url: http://es-sandbox.internal:9200
+
+    # basic auth — native ES security or an authenticating reverse proxy
+    # in front; identical config either way
+    - name: prod-eu
+      url: https://es-eu-proxy.internal:9443
+      auth: {type: basic, username: medulla, password: "${PROXY_EU_PASSWORD}"}
+
+    # API key (ES)
+    - name: prod-us
+      url: https://es-us.internal:9200
+      auth: {type: api_key, api_key: "${ES_US_API_KEY}"}
+
+    # private CA for the endpoint's TLS cert (ca_file is optional —
+    # omit it when the cert chains to a system-trusted CA)
+    - name: prod-asia
+      url: https://es-asia.internal:9200
+      auth: {type: basic, username: medulla, password: "${ES_ASIA_PASSWORD}"}
+      tls: {ca_file: /etc/medulla/ca/private-ca.pem}
+```
+
+The `ca_file` case needs the bundle mounted:
+
+```yaml
+extraVolumes:
+  - name: es-ca
+    configMap: {name: es-ca-bundle}     # kubectl create configmap es-ca-bundle --from-file=private-ca.pem
+extraVolumeMounts:
+  - name: es-ca
+    mountPath: /etc/medulla/ca
+    readOnly: true
+```
+
+Then scope who sees the new cluster — roles list clusters explicitly (or `"*"` for all):
+
+```yaml
+config:
+  roles:
+    admin:    {clusters: ["*"],                permissions: [admin]}
+    eu-team:  {clusters: [prod-eu, sandbox],   permissions: [view, index:write, rest:get]}
+```
+
+ES version/flavor (ES 7/8, OpenSearch) is detected automatically per cluster — nothing to configure.
 
 ## How secrets work
 
