@@ -39,6 +39,8 @@ roles:
 #   group_to_role:
 #     "cn=es-admins,ou=groups,dc=example,dc=com": admin
 #     "cn=developers,ou=groups,dc=example,dc=com": developer
+#   user_to_role:                  # single users, no group needed; unioned with group roles
+#     jdoe: operator
 
 local_users:
   - name: admin
@@ -51,5 +53,5 @@ session:
   # insecure_cookie: true         # only for plain-HTTP dev; cookies are Secure by default
 
 # trusted_proxies:                # CIDRs of ingress/reverse proxies; enables real
-#   - 10.0.0.0/8                  # client IPs (X-Forwarded-For) for rate limiting + audit
+#   - 10.0.0.0/8                  # client IPs (X-Forwarded-For) in audit logs
 

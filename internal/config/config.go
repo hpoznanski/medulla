@@ -67,6 +67,7 @@ type LDAP struct {
 	UserBase     string            `yaml:"user_base"`
 	UserFilter   string            `yaml:"user_filter"` // default (uid=%s)
 	GroupToRole  map[string]string `yaml:"group_to_role"`
+	UserToRole   map[string]string `yaml:"user_to_role"` // username -> role, unioned with group roles
 }
 
 type LocalUser struct {
@@ -235,6 +236,11 @@ func (c *Config) validate() error {
 		for group, role := range c.LDAP.GroupToRole {
 			if _, ok := c.Roles[role]; !ok {
 				return fmt.Errorf("config: ldap group %q: unknown role %q", group, role)
+			}
+		}
+		for user, role := range c.LDAP.UserToRole {
+			if _, ok := c.Roles[role]; !ok {
+				return fmt.Errorf("config: ldap user %q: unknown role %q", user, role)
 			}
 		}
 	}

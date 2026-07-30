@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
+	"slices"
 	"strings"
 	"time"
 
@@ -125,6 +126,9 @@ func (a *Authenticator) loginLDAP(username, password string) ([]string, error) {
 		if role, ok := a.ldap.GroupToRole[group]; ok {
 			roles = append(roles, role)
 		}
+	}
+	if role, ok := a.ldap.UserToRole[username]; ok && !slices.Contains(roles, role) {
+		roles = append(roles, role)
 	}
 	if len(roles) == 0 {
 		return nil, ErrBadCredentials // authenticated but no mapped role: no access

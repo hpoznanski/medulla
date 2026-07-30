@@ -134,6 +134,35 @@ func TestLoginLDAP(t *testing.T) {
 	}
 }
 
+func TestLoginLDAPUserToRole(t *testing.T) {
+	tests := []struct {
+		name      string
+		groups    []string
+		wantRoles []string
+	}{
+		{"user mapping alone grants access", []string{"cn=other,dc=x"}, []string{"developer"}},
+		{"unions with group roles", []string{"cn=es-admins,dc=x"}, []string{"admin", "developer"}},
+		{"no duplicate when group grants same role", []string{"cn=es-devs,dc=x"}, []string{"developer"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := ldapConfig()
+			cfg.LDAP.UserToRole = map[string]string{"alice": "developer"}
+			a := New(cfg, discardLogger())
+			a.dialLDAP = func(string) (ldapConn, error) {
+				return &fakeLDAP{entries: []*ldap.Entry{userEntry(tt.groups...)}}, nil
+			}
+			roles, err := a.Login("alice", "pw")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if fmt.Sprint(roles) != fmt.Sprint(tt.wantRoles) {
+				t.Errorf("roles = %v, want %v", roles, tt.wantRoles)
+			}
+		})
+	}
+}
+
 func TestLoginLDAPUnreachableFallsBackToLocal(t *testing.T) {
 	cfg := ldapConfig()
 	cfg.LocalUsers = []config.LocalUser{{Name: "root", Password: "pw", Roles: []string{"admin"}}}
