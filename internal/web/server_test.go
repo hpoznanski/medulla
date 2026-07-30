@@ -1,6 +1,7 @@
 package web
 
 import (
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -162,6 +163,23 @@ func TestLoginRateLimit(t *testing.T) {
 	}
 	if last != http.StatusTooManyRequests {
 		t.Errorf("10th attempt status = %d, want 429", last)
+	}
+}
+
+func TestLoginRateLimitPerUser(t *testing.T) {
+	s, _ := testServer(t, "http://127.0.0.1:1")
+	var last int
+	for i := range 10 {
+		form := url.Values{"username": {"root"}, "password": {"wrong"}}
+		req := httptest.NewRequest(http.MethodPost, "/login", strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		req.RemoteAddr = fmt.Sprintf("10.9.9.%d:1", i)
+		rec := httptest.NewRecorder()
+		s.ServeHTTP(rec, req)
+		last = rec.Code
+	}
+	if last != http.StatusTooManyRequests {
+		t.Errorf("10th attempt from rotating IPs status = %d, want 429", last)
 	}
 }
 

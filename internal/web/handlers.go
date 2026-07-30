@@ -27,13 +27,15 @@ func (s *Server) handleLoginPage(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	ip := s.clientIP(r)
-	if !s.loginRate.Allow(ip) {
-		s.logger.Warn("audit", "type", "audit", "event", "login", "outcome", "rate_limited", "ip", ip)
+	username := r.PostFormValue("username")
+	// Keyed on username, not IP: works identically with or without proxies and
+	// trusted_proxies config, and cannot be reset by rotating X-Forwarded-For.
+	if !s.loginRate.Allow(username) {
+		s.logger.Warn("audit", "type", "audit", "event", "login", "outcome", "rate_limited", "ip", ip, "user", username)
 		http.Error(w, "too many attempts, retry later", http.StatusTooManyRequests)
 		return
 	}
 
-	username := r.PostFormValue("username")
 	roles, err := s.auth.Login(username, r.PostFormValue("password"))
 	if err != nil {
 		outcome := "bad_credentials"

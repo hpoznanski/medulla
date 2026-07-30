@@ -104,7 +104,7 @@ func NewServer(
 		rbac:      store,
 		clusters:  clusters,
 		logger:    logger,
-		loginRate: auth.NewRateLimiter(5, 10), // burst 5, 10 attempts/min per IP
+		loginRate: auth.NewRateLimiter(5, 10), // burst 5, 10 attempts/min per username
 		proxies:   proxies,
 		tmpl:      tmpl,
 		mux:       http.NewServeMux(),
