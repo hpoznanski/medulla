@@ -74,7 +74,7 @@ roles:
 
 - Secrets enter via `${ENV_VAR}` or `${file:/path}` interpolation — from K8s Secrets; nothing sensitive in the config file itself. Values with newlines are rejected (YAML injection guard). Secrets redact themselves in all log/marshal output.
 - Session cookies: HttpOnly, SameSite=Lax, Secure by default; `session.secret` accepts a comma-separated key list for zero-logout rotation. Multi-replica works with a shared secret, no sticky sessions.
-- Login rate limiting per client IP; set `trusted_proxies` (ingress CIDRs) so X-Forwarded-For is honored only from your proxies.
+- Login rate limiting per username — independent of proxy topology, immune to X-Forwarded-For spoofing. Set `trusted_proxies` (ingress CIDRs) so audit logs record real client IPs instead of the proxy's.
 - CSRF: SameSite=Lax + Origin check on all non-GET requests.
 - Audit: every login attempt, denial, and state-changing request logged as JSON with user/roles/method/path/outcome/IP — never request bodies.
 
@@ -97,7 +97,9 @@ The two accounts demonstrate RBAC: log in as each and compare what the UI offers
 
 ## Configuration
 
-See [`config.example.yaml`](config.example.yaml). Minimal:
+One YAML file. Full annotated reference: [`config.example.yaml`](config.example.yaml). Secrets never go in the file — use `${ENV_VAR}` or `${file:/path}` interpolation anywhere a value is expected.
+
+Minimal working config:
 
 ```yaml
 clusters:
@@ -113,6 +115,97 @@ session:
 ```
 
 Run: `medulla -config /etc/medulla/config.yaml`. Logs are JSON on stdout. `/healthz` for probes.
+
+### Top level
+
+```yaml
+listen: ":8080"        # default
+env: production        # enforces session.secret; omit for dev
+trusted_proxies:       # ingress/reverse-proxy CIDRs; audit logs then record the
+  - 10.42.0.0/16       # real client IP from X-Forwarded-For instead of the proxy's
+```
+
+### Clusters
+
+Three auth types — `none`, `basic`, `api_key` — plus optional TLS settings per cluster:
+
+```yaml
+clusters:
+  - name: dev                     # no auth (dev, or network-trusted)
+    url: http://es-dev:9200
+
+  - name: prod-eu                 # basic auth
+    url: https://es-eu:9200
+    auth: {type: basic, username: medulla, password: "${ES_EU_PASSWORD}"}
+
+  - name: prod-us                 # API key (ES 8 / OpenSearch)
+    url: https://es-us:9200
+    auth: {type: api_key, api_key: "${ES_US_API_KEY}"}
+
+  - name: onprem                  # custom CA / self-signed
+    url: https://es-onprem:9200
+    auth: {type: basic, username: medulla, password: "${ONPREM_PASSWORD}"}
+    tls:
+      ca_file: /etc/medulla/ca.pem   # omit when the cert chains to a system CA
+      # insecure: true               # skip verification — never in production
+```
+
+Give each Medulla service account the least ES privilege that covers what its users need — that is the real blast-radius limiter.
+
+### Roles
+
+Named permission sets scoped to clusters (atoms listed under [RBAC](#rbac)):
+
+```yaml
+roles:
+  admin:     {clusters: ["*"],       permissions: [admin]}
+  operator:  {clusters: ["*"],       permissions: [view, index:write, alias:write, template:write, snapshot:write, cluster:write, rest:full]}
+  developer: {clusters: [staging],   permissions: [view, rest:get]}
+  viewer:    {clusters: ["*"],       permissions: [view]}
+```
+
+### Users: LDAP
+
+Service-account bind, then user search + bind. Roles come from directory groups (`group_to_role`), individual users (`user_to_role`), or both — results are unioned. Authenticated users with no mapped role are denied.
+
+```yaml
+ldap:
+  url: ldaps://ldap.example.com
+  bind_dn: "${LDAP_BIND_DN}"
+  bind_password: "${LDAP_BIND_PASSWORD}"
+  user_base: ou=people,dc=example,dc=com
+  user_filter: "(uid=%s)"                # default; use (sAMAccountName=%s) for AD
+  group_to_role:
+    "cn=es-admins,ou=groups,dc=example,dc=com": admin
+    "cn=devs,ou=groups,dc=example,dc=com":      developer
+  user_to_role:                          # single users, no directory group needed
+    jdoe: operator
+```
+
+### Users: local
+
+Work standalone or as fallback when LDAP is unreachable. Passwords: bcrypt hash (recommended) or plaintext via interpolation:
+
+```yaml
+local_users:
+  - name: admin
+    password: "bcrypt:$2a$10$..."        # htpasswd -bnBC 10 "" 'pw' | tr -d ':\n'
+    roles: [admin]
+  - name: breakglass
+    password: "${BREAKGLASS_PASSWORD}"
+    roles: [operator]
+```
+
+### Sessions
+
+Stateless HMAC-signed cookies — replicas share the secret, no store, no sticky sessions:
+
+```yaml
+session:
+  secret: "${SESSION_SECRET}"   # >=32 chars; "new,old" list rotates keys without logouts
+  ttl: 12h
+  # insecure_cookie: true       # plain-HTTP dev only; cookies are Secure by default
+```
 
 ## Production deployment (Kubernetes)
 

@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2026-07-30
+
+### Added
+
+- LDAP `user_to_role`: map a single LDAP user directly to a role without
+  requiring a directory group; unioned with `group_to_role` results.
+- `SECURITY.md` with private vulnerability reporting policy.
+- README: full configuration reference (clusters/auth/TLS, roles, LDAP,
+  local users, sessions, trusted proxies).
+
+### Changed
+
+- Login rate limiting is now keyed on username instead of client IP: behavior
+  is identical with or without reverse proxies and cannot be bypassed by
+  spoofing `X-Forwarded-For`. `trusted_proxies` now only affects the client IP
+  recorded in audit logs.
+- Helm chart 0.3.0: app version bump only, no template changes.
+
 ## [0.2.0] - 2026-07-27
 
 ### Added

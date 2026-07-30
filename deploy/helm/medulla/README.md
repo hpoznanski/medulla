@@ -145,7 +145,7 @@ If you still prefer file delivery, it is fully supported: mount the Secret as a 
 | `image.repository` / `image.tag` | `ghcr.io/hpoznanski/medulla` / chart appVersion | |
 | `existingSecret` | `""` | Secret name providing env vars — **required in practice** |
 | `config` | minimal skeleton | the entire Medulla config.yaml, rendered verbatim into a ConfigMap |
-| `config.trusted_proxies` | `[]` | set to your ingress pod CIDRs — enables real client IPs for login rate limiting and audit |
+| `config.trusted_proxies` | `[]` | set to your ingress pod CIDRs — enables real client IPs in audit logs (login rate limiting is per username, unaffected) |
 | `config.session.secret` | `${SESSION_SECRET}` | ≥32 chars; comma-separated list rotates keys |
 | `ingress.*` | disabled | className, host, TLS |
 | `extraVolumes` / `extraVolumeMounts` | `[]` | e.g. private CA bundle for `tls.ca_file` |
