@@ -9,12 +9,15 @@ on:
 permissions:
   contents: read
 
+# Actions are pinned to commit SHAs, not tags: a tag can be moved, and these
+# workflows hold packages:write. Dependabot's github-actions ecosystem keeps
+# the pins current and records the version in the trailing comment.
 jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-go@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
           go-version-file: go.mod
       - run: gofmt -l . | tee /dev/stderr | wc -l | grep -q '^0$'
@@ -30,31 +33,96 @@ jobs:
           helm lint deploy/helm/medulla
           ./deploy/helm/medulla/tests/render_test.sh
 
+  # Fuzz the boundaries that take untrusted input: console paths reaching the
+  # cluster, interpolated secrets spliced into config text, and session
+  # cookies. Short runs — this is a smoke test for regressions, not a search.
+  fuzz:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.mod
+      - name: fuzz trust boundaries
+        run: |
+          set -euo pipefail
+          fuzz() { # fuzz <package> <target>
+            echo "::group::$2"
+            go test "$1" -run '^$' -fuzz "^$2\$" -fuzztime=30s
+            echo "::endgroup::"
+          }
+          fuzz ./internal/es      FuzzDoPath
+          fuzz ./internal/es      FuzzValidIndexName
+          fuzz ./internal/config  FuzzInterpolateNoInjection
+          fuzz ./internal/config  FuzzInterpolateEnvNoInjection
+          fuzz ./internal/config  FuzzLoadNeverPanics
+          fuzz ./internal/auth    FuzzUnsign
+          fuzz ./internal/auth    FuzzDecodeRejectsForged
+      - name: upload failing corpus
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: fuzz-corpus
+          path: internal/*/testdata/fuzz/**
+          if-no-files-found: ignore
+
+  # The unit tests use a fake ES; this is the only job that proves flavor
+  # detection, real _cat shapes and the RBAC-gated write paths work against
+  # actual Elasticsearch and OpenSearch.
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.mod
+      - name: start elasticsearch and opensearch
+        run: docker compose up -d --wait es01 es02 opensearch
+      - name: start medulla
+        run: |
+          go build -o /tmp/medulla ./cmd/medulla
+          sed -e 's|http://es01:9200|http://localhost:9200|' \
+              -e 's|http://opensearch:9200|http://localhost:9201|' \
+              config.dev.yaml > /tmp/config.yaml
+          /tmp/medulla -config /tmp/config.yaml &
+          for i in $(seq 1 60); do
+            curl -sf http://localhost:8080/healthz >/dev/null && exit 0
+            sleep 1
+          done
+          echo "medulla did not start"; exit 1
+      - name: e2e
+        run: ./scripts/e2e.sh
+      - name: cluster state on failure
+        if: failure()
+        run: |
+          curl -s 'http://localhost:9200/_cat/indices?v' || true
+          docker compose logs --tail=50 || true
+
   image:
     # Push the image only for version tags; PRs and branch pushes just test.
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: test
+    needs: [test, fuzz, e2e]
     runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write
     steps:
-      - uses: actions/checkout@v7
-      - uses: docker/setup-qemu-action@v4
-      - uses: docker/setup-buildx-action@v3
-      - uses: docker/login-action@v3
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: docker/setup-qemu-action@96fe6ef7f33517b61c61be40b68a1882f3264fb8 # v4
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - uses: docker/metadata-action@v6
+      - uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6
         id: meta
         with:
           images: ghcr.io/${{ github.repository }}
           tags: |
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
-      - uses: docker/build-push-action@v7
+      - uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
         with:
           context: .
           platforms: linux/amd64,linux/arm64
@@ -64,13 +132,13 @@ jobs:
 
   chart:
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: test
+    needs: [test, fuzz, e2e]
     runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - name: push chart to GHCR (OCI)
         run: |
           VERSION="${GITHUB_REF_NAME#v}"

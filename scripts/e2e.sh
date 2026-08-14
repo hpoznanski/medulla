@@ -60,11 +60,47 @@ check "setting put" 303 -b $W -d 'key=cluster.routing.allocation.enable&value=al
 curl -s -b $W $M/c/dev-es/settings | grep -q 'cluster.routing.allocation.enable' && ok "setting visible" || fail "setting missing"
 check "setting reset" 303 -b $W -d 'key=cluster.routing.allocation.enable&value=' $M/c/dev-es/settings
 
+## index settings (effective values incl. ES defaults, edit and reset)
+curl -s -b $W $M/c/dev-es/indices/e2e-test | grep -q 'index.number_of_shards' && ok "index settings listed" || fail "index settings missing"
+curl -s -b $W $M/c/dev-es/indices/e2e-test | grep -q 'index.refresh_interval' && ok "ES defaults included" || fail "defaults missing (include_defaults broken)"
+check "index setting put" 303 -b $W -d 'key=index.refresh_interval&value=30s' $M/c/dev-es/indices/e2e-test/settings
+curl -s 'http://localhost:9200/e2e-test/_settings?flat_settings=true' | grep -q '"index.refresh_interval":"30s"' && ok "index setting reached ES" || fail "index setting didn't land"
+check "index setting reset" 303 -b $W -d 'key=index.refresh_interval&value=' $M/c/dev-es/indices/e2e-test/settings
+curl -s 'http://localhost:9200/e2e-test/_settings?flat_settings=true' | grep -q 'refresh_interval' && fail "index setting still set after reset" || ok "index setting cleared in ES"
+# static settings must be refused by ES and surfaced, not silently swallowed
+curl -s -i -b $W -d 'key=index.number_of_shards&value=5' $M/c/dev-es/indices/e2e-test/settings | grep -qi 'location:.*non.dynamic\|location:.*notice=' && ok "static setting rejected with reason" || fail "static setting not surfaced"
+
+## shard routing
+curl -s -b $W $M/c/dev-es/overview | grep -q 'Cluster routing' && ok "routing panel shown to writer" || fail "routing panel missing"
+check "routing enable put" 303 -b $W -d 'kind=allocation&value=primaries' $M/c/dev-es/routing
+curl -s 'http://localhost:9200/_cluster/settings' | grep -q 'primaries' && ok "routing setting reached ES" || fail "routing setting didn't land"
+curl -s -b $W $M/c/dev-es/overview | grep -q 'Shard routing is restricted' && ok "restriction banner shown" || fail "no restriction banner"
+check "routing enable restored" 303 -b $W -d 'kind=allocation&value=all' $M/c/dev-es/routing
+curl -s -i -b $W -d 'kind=rebalance&value=new_primaries' $M/c/dev-es/routing | grep -qi 'location:.*invalid' && ok "invalid routing value rejected" || fail "invalid routing value accepted"
+# draining needs the node name typed back; a mismatch must not touch the cluster
+check "node exclude unconfirmed bounces" 303 -b $W -d 'node=es01&action=exclude&confirm=wrong' $M/c/dev-es/routing/exclude
+curl -s 'http://localhost:9200/_cluster/settings' | grep -q 'exclude' && fail "unconfirmed exclude wrote to ES" || ok "unconfirmed exclude did nothing"
+check "node exclude confirmed" 303 -b $W -d 'node=es01&action=exclude&confirm=es01' $M/c/dev-es/routing/exclude
+curl -s 'http://localhost:9200/_cluster/settings' | grep -q '"_name":"es01"' && ok "node exclusion reached ES" || fail "node exclusion didn't land"
+check "node re-included" 303 -b $W -d 'node=es01&action=include' $M/c/dev-es/routing/exclude
+curl -s 'http://localhost:9200/_cluster/settings' | grep -q 'exclude' && fail "exclusion not cleared" || ok "node exclusion cleared"
+check "reader routing denied" 403 -b $R -d 'kind=allocation&value=none' $M/c/dev-es/routing
+check "reader node exclude denied" 403 -b $R -d 'node=es01&action=exclude&confirm=es01' $M/c/dev-es/routing/exclude
+# leave no persistent routing settings behind
+curl -s -b $W -d 'key=cluster.routing.allocation.enable&value=' $M/c/dev-es/settings >/dev/null
+curl -s 'http://localhost:9200/_cluster/settings' | grep -q 'routing' && fail "routing settings left behind" || ok "routing settings cleaned up"
+
 ## analyze + console
 curl -s -b $W -d 'analyzer=standard&text=hello+world' $M/c/dev-es/analyze | grep -q '<td>hello</td>' && ok "analyze returns tokens" || fail "analyze broken"
 curl -s -b $W -d 'method=GET&path=/_cluster/health' $M/c/dev-es/console | grep -q 'cluster_name' && ok "console GET works" || fail "console GET broken"
 check "console PUT (writer, rest:full)" 200 -b $W -d 'method=PUT&path=/e2e-console-idx' $M/c/dev-es/console
 curl -s http://localhost:9200/e2e-console-idx | grep -q e2e-console-idx && ok "console PUT reached ES" || fail "console PUT didn't land"
+# response JSON is re-indented, and the request is remembered in a signed cookie
+curl -s -b $W -d 'method=GET&path=/_cluster/health' $M/c/dev-es/console | grep -q '&#34;status&#34;: ' && ok "console response pretty-printed" || fail "console response not indented"
+H=/tmp/e2e-hist.jar; rm -f $H
+curl -s -c $H -b $W -d 'method=GET&path=/_cluster/health' $M/c/dev-es/console >/dev/null
+grep -q medulla_console $H && ok "console history cookie set" || fail "no console history cookie"
+curl -s -b $H -b $W $M/c/dev-es/console | grep -q '_cluster/health' && ok "console history replayable" || fail "history not rendered"
 
 ## RBAC: reader denied everywhere it should be
 check "reader sees overview" 200 -b $R $M/c/dev-es/overview

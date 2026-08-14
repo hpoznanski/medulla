@@ -33,6 +33,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (`linux/amd64`, `linux/arm64`), tagging scheme, and the operational
   consequences of the `FROM scratch` image (no shell, uid 65534).
 - README: CI, release, license and Go version badges.
+- CI: `e2e` job running `scripts/e2e.sh` against real Elasticsearch and
+  OpenSearch from docker-compose. The script already existed but nothing ran
+  it; unit tests use a fake ES, so this is the only coverage of flavor
+  detection, real `_cat` shapes and the RBAC-gated write paths.
+- CI: `fuzz` job covering the untrusted-input boundaries — console paths
+  reaching the cluster, secrets interpolated into config text, and session
+  cookies. Seven targets at 30s each, Go's native fuzzing, no new dependency.
+- e2e coverage for the index settings editor, shard routing controls, node
+  drain confirmation, and console pretty-printing and history (93 checks).
 
 ### Changed
 
@@ -42,6 +51,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Routing state is read with `filter_path`, trimming `_cluster/settings` from
   ~34 kB to ~150 bytes on every overview render.
 - Helm chart 0.4.0: app version bump only, no template changes.
+- CI: GitHub Actions pinned to commit SHAs rather than floating tags. These
+  workflows hold `packages: write`, and a tag can be moved under you.
+  Dependabot's github-actions ecosystem keeps the pins current.
+- CI: `image` and `chart` now require `fuzz` and `e2e` in addition to `test`.
 
 ### Fixed
 
