@@ -13,9 +13,45 @@
     {{if .Error}}<div class="banner error">{{.Error}}</div>{{end}}
     {{if .Notice}}<div class="banner notice">{{.Notice}}</div>{{end}}
 
+    {{if .CanWrite}}
+    <section class="panel">
+      <h2>Set index setting</h2>
+      <form class="inline-form" method="post" action="/c/{{.Cluster}}/indices/{{.Index}}/settings">
+        <label class="grow">key <input name="key" value="{{.SettingKey}}" required placeholder="index.number_of_replicas"></label>
+        <label>value <input name="value" placeholder="empty = reset to default"></label>
+        <button type="submit" class="primary">Apply</button>
+      </form>
+      <p class="muted">Click any setting below to load its key here. Static settings
+        (shard count, uuid, creation date) cannot change on a live index — Elasticsearch
+        rejects those with a reason.</p>
+    </section>
+    {{end}}
+
+    {{if .Settings}}
+    <section class="panel">
+      <h2>{{.Index}} — settings <span class="muted">({{len .Settings}} effective)</span></h2>
+      <div class="scroll">
+      <table>
+        <tr><th>setting</th><th>value</th><th>source</th></tr>
+        {{$c := .Cluster}}{{$i := .Index}}{{$w := .CanWrite}}
+        {{range .Settings}}
+        <tr>
+          <td>{{if $w}}<a href="/c/{{$c}}/indices/{{$i}}?key={{.Key}}">{{.Key}}</a>{{else}}{{.Key}}{{end}}</td>
+          <td>{{.Value}}</td>
+          <td>{{if .Default}}<span class="muted">default</span>{{else}}<span class="chip">set</span>{{end}}</td>
+        </tr>
+        {{end}}
+      </table>
+      </div>
+    </section>
+    {{end}}
+
     <section class="panel">
       <h2>{{.Index}} — settings, mappings, aliases</h2>
-      <div class="scroll"><pre class="json">{{.Detail}}</pre></div>
+      <details>
+        <summary class="muted">raw JSON</summary>
+        <div class="scroll"><pre class="json">{{.Detail}}</pre></div>
+      </details>
     </section>
 
     {{if .CanWrite}}

@@ -5,6 +5,52 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2026-08-14
+
+### Added
+
+- Shard routing controls on the overview: drain a single node by excluding it
+  from allocation (type-the-name confirmation, since it relocates every shard
+  off that node), and cluster-wide `allocation.enable` / `rebalance.enable`
+  selectors. A standing banner warns while any routing restriction is in place.
+  All gated on `cluster:write`.
+- Node allocation status per node: `draining · N left` while shards remain,
+  `drained — safe to stop` once the node holds nothing.
+- Index settings editor on the index detail page: every effective setting with
+  ES defaults shown alongside explicitly set values, and edit/reset for any
+  dynamic setting. Gated on `index:write`.
+- Cluster totals on the overview: indices, docs, deleted docs, store size.
+- REST console: request and response JSON pretty-printed, and a replayable
+  history of recent requests in an HMAC-signed cookie — survives restarts and
+  works across replicas without shared state. Bodies over 800 bytes are stored
+  without the body rather than truncated into invalid JSON.
+- README: Operations runbooks (rolling restart, node drain, unassigned shards,
+  secret rotation, LDAP outage, audit log, upgrades), a Troubleshooting table,
+  a Limits and tunables table, and a "What Medulla is not" section.
+- README: full RBAC permission table, including the note that write atoms do
+  not imply `view`.
+
+### Changed
+
+- Go toolchain to 1.26.6, clearing six standard-library advisories reported by
+  govulncheck (`net/url`, `html/template`, `crypto/tls`, `net/http`,
+  `encoding/asn1`, `x/net/idna`). No Medulla code changed.
+- Routing state is read with `filter_path`, trimming `_cluster/settings` from
+  ~34 kB to ~150 bytes on every overview render.
+- Helm chart 0.4.0: app version bump only, no template changes.
+
+### Fixed
+
+- Shard grid hover tooltips were clipped by an `overflow-x` container, hiding
+  per-shard details on the top row.
+- Overview stat tiles used `auto-fit`, so a lone tile on the last row stretched
+  to full width instead of aligning with the grid.
+- The allocation column no longer renders for users without `cluster:write`
+  when no node is excluded, instead of showing an empty column.
+- A cluster whose settings cannot be read is reported as unknown rather than
+  as restricted, and its routing controls are hidden instead of submitting a
+  guessed current value.
+
 ## [0.3.0] - 2026-07-30
 
 ### Added

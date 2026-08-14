@@ -146,11 +146,16 @@ func TestOverview(t *testing.T) {
 		"/_cluster/health": `{"cluster_name":"t","status":"yellow","number_of_nodes":2,"active_shards":10,"unassigned_shards":1}`,
 		"/_cat/nodes":      `[{"name":"n1","ip":"10.0.0.1","node.role":"dm","master":"*","heap.percent":"42","disk.used_percent":"51.5","cpu":"7","load_1m":"0.42"}]`,
 		"/_cat/shards":     `[{"index":"i1","shard":"0","prirep":"p","state":"STARTED","node":"n1"},{"index":"i1","shard":"1","prirep":"r","state":"UNASSIGNED","node":"","unassigned.reason":"NODE_LEFT"}]`,
+		"/_cluster/stats":  `{"indices":{"count":7,"docs":{"count":1234,"deleted":5},"store":{"size_in_bytes":2147483648}}}`,
 	})
 
 	o, err := newTestClient(t, srv.URL).Overview(context.Background())
 	if err != nil {
 		t.Fatal(err)
+	}
+	want := Totals{OK: true, Indices: 7, Docs: 1234, Deleted: 5, StoreSize: "2.0gb"}
+	if o.Totals != want {
+		t.Errorf("totals = %+v, want %+v", o.Totals, want)
 	}
 	if o.Health.Status != "yellow" || o.Health.UnassignedShards != 1 {
 		t.Errorf("health = %+v", o.Health)
@@ -160,6 +165,22 @@ func TestOverview(t *testing.T) {
 	}
 	if len(o.Shards) != 2 || o.Shards[1].Reason != "NODE_LEFT" {
 		t.Errorf("shards = %+v", o.Shards)
+	}
+}
+
+// A cluster that refuses _cluster/stats must still render an overview.
+func TestOverviewTotalsDegrade(t *testing.T) {
+	srv := fakeCluster(t, `{}`, map[string]string{
+		"/_cluster/health": `{"status":"green","number_of_nodes":1}`,
+		"/_cat/nodes":      `[]`,
+		"/_cat/shards":     `[]`,
+	})
+	o, err := newTestClient(t, srv.URL).Overview(context.Background())
+	if err != nil {
+		t.Fatalf("overview failed when only _cluster/stats was unavailable: %v", err)
+	}
+	if o.Totals.OK {
+		t.Errorf("totals = %+v, want OK false", o.Totals)
 	}
 }
 

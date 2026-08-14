@@ -44,6 +44,23 @@
       <div class="scroll"><pre class="json">{{.RespBody}}</pre></div>
     </section>
     {{end}}
+
+    {{if .History}}
+    <section class="panel">
+      <h2>History</h2>
+      <ul class="history">
+        {{$c := .Cluster}}
+        {{range .History}}
+        <li>
+          <a href="/c/{{$c}}/console?method={{.Method}}&amp;path={{.Path}}&amp;body={{.Body}}">
+            <span class="chip">{{.Method}}</span><code>{{.Path}}</code>{{if .Body}} <span class="muted">+body</span>{{end}}
+          </a>
+        </li>
+        {{end}}
+      </ul>
+      <p class="muted">Entries load into the form above; nothing runs until you press Send.</p>
+    </section>
+    {{end}}
   </main>
 </body>
 </html>

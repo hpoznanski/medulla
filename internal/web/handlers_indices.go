@@ -64,18 +64,21 @@ func (s *Server) handleIndexCreate(w http.ResponseWriter, r *http.Request) {
 
 type indexDetailData struct {
 	pageData
-	Index  string
-	Detail string
-	Notice string
+	Index      string
+	Detail     string
+	Settings   []es.IndexSetting
+	SettingKey string // prefills the edit form when a table row is clicked
+	Notice     string
 }
 
 func (s *Server) handleIndexDetail(w http.ResponseWriter, r *http.Request) {
 	client := clientFrom(r)
 	index := r.PathValue("index")
 	data := indexDetailData{
-		pageData: s.page(r, "indices"),
-		Index:    index,
-		Notice:   r.URL.Query().Get("notice"),
+		pageData:   s.page(r, "indices"),
+		Index:      index,
+		SettingKey: r.URL.Query().Get("key"),
+		Notice:     r.URL.Query().Get("notice"),
 	}
 
 	detail, err := client.IndexDetail(r.Context(), index)
@@ -83,7 +86,26 @@ func (s *Server) handleIndexDetail(w http.ResponseWriter, r *http.Request) {
 		data.Error = err.Error()
 	}
 	data.Detail = detail
+
+	settings, err := client.IndexSettings(r.Context(), index)
+	if err != nil && data.Error == "" {
+		data.Error = err.Error()
+	}
+	data.Settings = settings
 	s.render(w, "index_detail.html", data)
+}
+
+func (s *Server) handleIndexSettingPut(w http.ResponseWriter, r *http.Request) {
+	cluster, index := r.PathValue("cluster"), r.PathValue("index")
+	client := clientFrom(r)
+
+	key, value := r.PostFormValue("key"), r.PostFormValue("value")
+	err := client.IndexSettingPut(r.Context(), index, key, value)
+	action := "set " + key
+	if value == "" {
+		action = "reset " + key
+	}
+	s.redirectNotice(w, r, "/c/"+cluster+"/indices/"+index, action, err)
 }
 
 func formInt(r *http.Request, field string, def int) int {

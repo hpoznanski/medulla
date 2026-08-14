@@ -218,6 +218,138 @@ func TestClusterSettings(t *testing.T) {
 	}
 }
 
+func TestRoutingEffectiveValues(t *testing.T) {
+	// Nested, not flat: filter_path treats dots as path separators, so the
+	// request cannot use flat_settings and ES answers with nested objects.
+	srv := fakeCluster(t, `{}`, map[string]string{
+		// transient beats persistent beats default, per ES precedence
+		"/_cluster/settings": `{
+			"persistent":{"cluster":{"routing":{"allocation":{"enable":"primaries","exclude":{"_name":"es01, es03"}}}}},
+			"transient":{"cluster":{"routing":{"allocation":{"enable":"none"}}}},
+			"defaults":{"cluster":{"routing":{"allocation":{"enable":"all"},"rebalance":{"enable":"all"}}}}}`,
+	})
+	r, err := newTestClient(t, srv.URL).Routing(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r.AllocationEnable != "none" {
+		t.Errorf("allocation = %q, want transient value", r.AllocationEnable)
+	}
+	if r.RebalanceEnable != "all" {
+		t.Errorf("rebalance = %q, want default", r.RebalanceEnable)
+	}
+	if len(r.ExcludedNodes) != 2 || r.ExcludedNodes[0] != "es01" || r.ExcludedNodes[1] != "es03" {
+		t.Errorf("excluded = %q, want the list split and trimmed", r.ExcludedNodes)
+	}
+	if !r.Restricted() {
+		t.Error("Restricted() = false with allocation disabled")
+	}
+}
+
+func TestRoutingDefaultsWhenUnset(t *testing.T) {
+	srv := fakeCluster(t, `{}`, map[string]string{
+		"/_cluster/settings": `{"persistent":{},"transient":{},"defaults":{}}`,
+	})
+	r, err := newTestClient(t, srv.URL).Routing(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r.AllocationEnable != "all" || r.RebalanceEnable != "all" {
+		t.Errorf("routing = %+v, want ES defaults", r)
+	}
+	if r.Restricted() {
+		t.Error("Restricted() = true on a healthy default cluster")
+	}
+}
+
+func TestExcludeNodePreservesList(t *testing.T) {
+	var gotBody string
+	settings := `{"persistent":{"cluster":{"routing":{"allocation":{"exclude":{"_name":"es01,es03"}}}}},"transient":{},"defaults":{}}`
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPut {
+			b, _ := io.ReadAll(r.Body)
+			gotBody = string(b)
+			w.Write([]byte(`{"acknowledged":true}`))
+			return
+		}
+		w.Write([]byte(settings))
+	}))
+	t.Cleanup(srv.Close)
+	c := newTestClient(t, srv.URL)
+
+	// adding a node must keep the ones already draining
+	if err := c.ExcludeNode(context.Background(), "es02", true); err != nil {
+		t.Fatal(err)
+	}
+	if want := `{"persistent":{"cluster.routing.allocation.exclude._name":"es01,es02,es03"}}`; gotBody != want {
+		t.Errorf("exclude body = %s\nwant %s", gotBody, want)
+	}
+
+	// removing one keeps the rest
+	if err := c.ExcludeNode(context.Background(), "es01", false); err != nil {
+		t.Fatal(err)
+	}
+	if want := `{"persistent":{"cluster.routing.allocation.exclude._name":"es03"}}`; gotBody != want {
+		t.Errorf("include body = %s\nwant %s", gotBody, want)
+	}
+
+	// a name with a comma would silently drain another node
+	if err := c.ExcludeNode(context.Background(), "es01,es02", true); err == nil {
+		t.Error("comma in node name accepted")
+	}
+}
+
+func TestExcludeLastNodeResetsSetting(t *testing.T) {
+	var gotBody string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPut {
+			b, _ := io.ReadAll(r.Body)
+			gotBody = string(b)
+			w.Write([]byte(`{"acknowledged":true}`))
+			return
+		}
+		w.Write([]byte(`{"persistent":{"cluster":{"routing":{"allocation":{"exclude":{"_name":"es01"}}}}},"transient":{},"defaults":{}}`))
+	}))
+	t.Cleanup(srv.Close)
+
+	if err := newTestClient(t, srv.URL).ExcludeNode(context.Background(), "es01", false); err != nil {
+		t.Fatal(err)
+	}
+	// null, not "": an empty string would leave a bogus node name excluded
+	if want := `{"persistent":{"cluster.routing.allocation.exclude._name":null}}`; gotBody != want {
+		t.Errorf("body = %s\nwant %s", gotBody, want)
+	}
+}
+
+func TestRoutingEnablePutValidation(t *testing.T) {
+	var gotBody string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		gotBody = string(b)
+		w.Write([]byte(`{"acknowledged":true}`))
+	}))
+	t.Cleanup(srv.Close)
+	c := newTestClient(t, srv.URL)
+
+	if err := c.RoutingEnablePut(context.Background(), "allocation", "none"); err != nil {
+		t.Fatal(err)
+	}
+	if want := `{"persistent":{"cluster.routing.allocation.enable":"none"}}`; gotBody != want {
+		t.Errorf("body = %s\nwant %s", gotBody, want)
+	}
+
+	// new_primaries is valid for allocation but not for rebalance
+	if err := c.RoutingEnablePut(context.Background(), "rebalance", "new_primaries"); err == nil {
+		t.Error("new_primaries accepted for rebalance.enable")
+	}
+	if err := c.RoutingEnablePut(context.Background(), "allocation", "new_primaries"); err != nil {
+		t.Errorf("new_primaries rejected for allocation.enable: %v", err)
+	}
+	if err := c.RoutingEnablePut(context.Background(), "nonsense", "all"); err == nil {
+		t.Error("unknown routing kind accepted")
+	}
+}
+
 func TestAllocationExplainFor(t *testing.T) {
 	c, rec := recordingServer(t, map[string]string{
 		"/_cluster/allocation/explain": `{

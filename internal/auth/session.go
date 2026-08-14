@@ -47,19 +47,17 @@ func NewCodec(secret string, ttl time.Duration) (*Codec, bool, error) {
 	return &Codec{keys: keys, ttl: ttl}, false, nil
 }
 
-func (c *Codec) Encode(user string, roles []string) (string, error) {
-	payload, err := json.Marshal(Session{User: user, Roles: roles, Expires: time.Now().Add(c.ttl)})
-	if err != nil {
-		return "", err
-	}
+// Sign encodes payload and appends an HMAC tag computed with the newest key.
+func (c *Codec) Sign(payload []byte) string {
 	body := base64.RawURLEncoding.EncodeToString(payload)
-	return body + "." + c.sign(body, c.keys[0]), nil
+	return body + "." + c.sign(body, c.keys[0])
 }
 
-func (c *Codec) Decode(token string) (Session, error) {
+// Unsign verifies a token against every key and returns the payload.
+func (c *Codec) Unsign(token string) ([]byte, error) {
 	body, sig, ok := strings.Cut(token, ".")
 	if !ok {
-		return Session{}, ErrInvalidSession
+		return nil, ErrInvalidSession
 	}
 	verified := false
 	for _, key := range c.keys {
@@ -69,9 +67,25 @@ func (c *Codec) Decode(token string) (Session, error) {
 		}
 	}
 	if !verified {
-		return Session{}, ErrInvalidSession
+		return nil, ErrInvalidSession
 	}
 	payload, err := base64.RawURLEncoding.DecodeString(body)
+	if err != nil {
+		return nil, ErrInvalidSession
+	}
+	return payload, nil
+}
+
+func (c *Codec) Encode(user string, roles []string) (string, error) {
+	payload, err := json.Marshal(Session{User: user, Roles: roles, Expires: time.Now().Add(c.ttl)})
+	if err != nil {
+		return "", err
+	}
+	return c.Sign(payload), nil
+}
+
+func (c *Codec) Decode(token string) (Session, error) {
+	payload, err := c.Unsign(token)
 	if err != nil {
 		return Session{}, ErrInvalidSession
 	}

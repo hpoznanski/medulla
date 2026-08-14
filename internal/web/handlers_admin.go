@@ -1,12 +1,14 @@
 package web
 
 import (
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/url"
 	"slices"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/hpoznanski/medulla/internal/es"
 	"github.com/hpoznanski/medulla/internal/rbac"
@@ -22,6 +24,7 @@ type consoleData struct {
 	RestFull   bool
 	RespStatus int
 	RespBody   string
+	History    []consoleEntry
 }
 
 var consoleMethods = []string{http.MethodGet, http.MethodHead, http.MethodPost, http.MethodPut, http.MethodDelete}
@@ -29,12 +32,116 @@ var consoleMethods = []string{http.MethodGet, http.MethodHead, http.MethodPost, 
 func (s *Server) handleConsolePage(w http.ResponseWriter, r *http.Request) {
 	sess := sessionFrom(r)
 	cluster := r.PathValue("cluster")
+
+	// Query parameters prefill the form from a history entry; nothing is sent
+	// to ES until the user submits.
+	method := r.URL.Query().Get("method")
+	if !slices.Contains(consoleMethods, method) {
+		method = http.MethodGet
+	}
+	path := r.URL.Query().Get("path")
+	if path == "" {
+		path = "/_cluster/health"
+	}
+
 	s.render(w, "console.html", consoleData{
 		pageData: s.page(r, "console"),
-		Method:   http.MethodGet,
-		Path:     "/_cluster/health",
+		Method:   method,
+		Path:     path,
+		Body:     es.PrettyJSON([]byte(r.URL.Query().Get("body"))),
 		RestFull: s.rbac.Allowed(sess.Roles, cluster, rbac.RestFull),
+		History:  s.consoleHistory(r),
 	})
+}
+
+// --- console history ---
+//
+// History lives in its own HMAC-signed cookie rather than server memory: it
+// survives restarts and stays consistent across replicas, matching the
+// stateless-session design. Signing stops a cookie-injecting attacker from
+// planting misleading entries in the list.
+
+const consoleCookie = "medulla_console"
+
+const (
+	consoleHistoryMax = 20
+	consoleBodyMax    = 800  // bodies above this are remembered without the body
+	consoleCookieMax  = 2500 // keeps the cookie clear of the ~4KB browser limit
+)
+
+type consoleEntry struct {
+	Method string `json:"m"`
+	Path   string `json:"p"`
+	Body   string `json:"b,omitempty"`
+}
+
+func (s *Server) consoleHistory(r *http.Request) []consoleEntry {
+	cookie, err := r.Cookie(consoleCookie)
+	if err != nil {
+		return nil
+	}
+	payload, err := s.sessions.Unsign(cookie.Value)
+	if err != nil {
+		return nil
+	}
+	var entries []consoleEntry
+	if err := json.Unmarshal(payload, &entries); err != nil {
+		return nil
+	}
+	if len(entries) > consoleHistoryMax {
+		entries = entries[:consoleHistoryMax]
+	}
+	return entries
+}
+
+// recordConsole pushes e to the front of the history cookie, dropping an
+// identical earlier entry and then the oldest entries until the cookie fits.
+// It returns the stored list so the caller can render it without waiting for
+// the cookie to come back on the next request.
+func (s *Server) recordConsole(w http.ResponseWriter, r *http.Request, e consoleEntry) []consoleEntry {
+	// Truncating would produce a body that looks re-runnable but is invalid
+	// JSON, so an oversized body is dropped outright.
+	if len(e.Body) > consoleBodyMax {
+		e.Body = ""
+	}
+	entries := []consoleEntry{e}
+	for _, old := range s.consoleHistory(r) {
+		if old == e {
+			continue
+		}
+		entries = append(entries, old)
+		if len(entries) == consoleHistoryMax {
+			break
+		}
+	}
+
+	var token string
+	for len(entries) > 0 {
+		payload, err := json.Marshal(entries)
+		if err != nil {
+			return nil
+		}
+		if t := s.sessions.Sign(payload); len(t) <= consoleCookieMax {
+			token = t
+			break
+		}
+		entries = entries[:len(entries)-1] // oldest out first
+	}
+	if token == "" {
+		return nil
+	}
+	http.SetCookie(w, &http.Cookie{
+		Name:  consoleCookie,
+		Value: token,
+		// Scoped to the cluster routes so a couple of KB does not ride along
+		// on every /static and /login request.
+		Path:     "/c/",
+		HttpOnly: true,
+		Secure:   !s.cfg.Session.InsecureCookie,
+		SameSite: http.SameSiteLaxMode,
+		MaxAge:   int(s.cfg.Session.TTL / time.Second),
+	})
+	return entries
 }
 
 func (s *Server) handleConsoleRun(w http.ResponseWriter, r *http.Request) {
@@ -64,6 +171,7 @@ func (s *Server) handleConsoleRun(w http.ResponseWriter, r *http.Request) {
 
 	var body io.Reader
 	if data.Body != "" && !readOnly {
+		// Sent verbatim: reformatting would corrupt NDJSON bulk bodies.
 		body = strings.NewReader(data.Body)
 	}
 	outcome := "executed"
@@ -71,10 +179,13 @@ func (s *Server) handleConsoleRun(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		data.Error = err.Error()
 		outcome = "error"
+		data.History = s.consoleHistory(r)
 	} else {
 		data.RespStatus = resp.Status
-		data.RespBody = string(resp.Body)
+		data.RespBody = es.PrettyJSON(resp.Body)
+		data.History = s.recordConsole(w, r, consoleEntry{Method: data.Method, Path: data.Path, Body: data.Body})
 	}
+	data.Body = es.PrettyJSON([]byte(data.Body))
 	// Audit records the ES target, never the request or response body.
 	s.logger.Info("audit", "type", "audit", "event", "console", "outcome", outcome,
 		"user", sess.User, "cluster", cluster, "es_method", data.Method, "es_path", data.Path,

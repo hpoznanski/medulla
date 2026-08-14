@@ -11,9 +11,24 @@
   {{template "topbar" .}}
 
   <main>
+  {{if .Notice}}<div class="banner notice">{{.Notice}}</div>{{end}}
   {{if .Error}}
     <div class="banner error">{{.Error}}</div>
   {{else}}
+    {{with .Routing}}{{if .Unknown}}
+    <div class="banner notice">
+      Shard routing state could not be read — Medulla's account for this cluster may lack
+      permission on <code>_cluster/settings</code>. Routing controls are hidden until it can.
+    </div>
+    {{else if .Restricted}}
+    <div class="banner error">
+      <b>Shard routing is restricted.</b>
+      allocation.enable = <code>{{.AllocationEnable}}</code>,
+      rebalance.enable = <code>{{.RebalanceEnable}}</code>{{if .ExcludedNodes}},
+      excluded: {{range .ExcludedNodes}}<span class="badge health-red">{{.}}</span> {{end}}{{end}}.
+      Leave this in place and the cluster cannot recover from a node failure on its own.
+    </div>
+    {{end}}{{end}}
     <section class="stats">
       <div class="stat"><span class="k">Health</span><span class="v health-{{.Overview.Health.Status}}">{{.Overview.Health.Status}}</span></div>
       <div class="stat"><span class="k">Version</span><span class="v">{{.Info.Flavor}} {{.Info.Version}}</span></div>
@@ -21,13 +36,23 @@
       <div class="stat"><span class="k">Active shards</span><span class="v">{{.Overview.Health.ActiveShards}}</span></div>
       <div class="stat"><span class="k">Relocating</span><span class="v">{{.Overview.Health.RelocatingShards}}</span></div>
       <div class="stat"><span class="k">Unassigned</span><span class="v {{if .Overview.Health.UnassignedShards}}health-red{{end}}">{{.Overview.Health.UnassignedShards}}</span></div>
+      {{with .Overview.Totals}}{{if .OK}}
+      <div class="stat"><span class="k">Indices</span><span class="v">{{.Indices}}</span></div>
+      <div class="stat"><span class="k">Docs</span><span class="v">{{.Docs}}</span></div>
+      <div class="stat"><span class="k">Deleted docs</span><span class="v">{{.Deleted}}</span></div>
+      <div class="stat"><span class="k">Store size</span><span class="v">{{.StoreSize}}</span></div>
+      {{end}}{{end}}
     </section>
 
     <section class="panel">
       <h2>Nodes</h2>
       <div class="scroll">
       <table>
-        <tr><th>node</th><th>ip</th><th>roles</th><th>heap</th><th>disk</th><th>cpu</th><th>load</th></tr>
+        {{/* Only worth a column when there are controls to offer or a node is
+             actually excluded — otherwise viewers get an empty column. */}}
+        {{$showAlloc := and (not .Routing.Unknown) (or .CanCluster .Routing.ExcludedNodes)}}
+        <tr><th>node</th><th>ip</th><th>roles</th><th>heap</th><th>disk</th><th>cpu</th><th>load</th>{{if $showAlloc}}<th>allocation</th>{{end}}</tr>
+        {{$c := .Cluster}}{{$excluded := .Excluded}}{{$counts := .ShardCount}}{{$canCluster := .CanCluster}}
         {{range .Overview.Nodes}}
         <tr>
           <td>{{.Name}}{{if .Master}} ★{{end}}</td>
@@ -37,15 +62,72 @@
           <td><meter min="0" max="100" high="85" value="{{.DiskPercent}}"></meter> {{.DiskPercent}}%</td>
           <td>{{.CPUPercent}}%</td>
           <td>{{.Load}}</td>
+          {{if $showAlloc}}
+          <td class="actions">
+            {{if index $excluded .Name}}
+              {{$left := index $counts .Name}}
+              {{if $left}}
+                <span class="badge health-red">draining · {{$left}} left</span>
+              {{else}}
+                <span class="badge health-yellow">drained — safe to stop</span>
+              {{end}}
+              {{if $canCluster}}
+              <form method="post" action="/c/{{$c}}/routing/exclude">
+                <input type="hidden" name="node" value="{{.Name}}">
+                <input type="hidden" name="action" value="include">
+                <button>re-include</button>
+              </form>
+              {{end}}
+            {{else if $canCluster}}
+              <form class="confirm-inline" method="post" action="/c/{{$c}}/routing/exclude">
+                <input type="hidden" name="node" value="{{.Name}}">
+                <input type="hidden" name="action" value="exclude">
+                <input name="confirm" autocomplete="off" placeholder="type {{.Name}}">
+                <button class="danger">exclude</button>
+              </form>
+            {{end}}
+          </td>
+          {{end}}
         </tr>
         {{end}}
       </table>
       </div>
     </section>
 
+    {{if and .CanCluster (not .Routing.Unknown)}}
+    <section class="panel">
+      <h2>Cluster routing</h2>
+      {{$alloc := .Routing.AllocationEnable}}{{$rebal := .Routing.RebalanceEnable}}
+      <form class="inline-form" method="post" action="/c/{{.Cluster}}/routing">
+        <input type="hidden" name="kind" value="allocation">
+        <label>allocation.enable
+          <select name="value">
+            {{range .AllocationValues}}
+            <option value="{{.}}" {{if eq . $alloc}}selected{{end}}>{{.}}</option>
+            {{end}}
+          </select>
+        </label>
+        <button type="submit" class="primary">Apply</button>
+      </form>
+      <form class="inline-form" method="post" action="/c/{{.Cluster}}/routing">
+        <input type="hidden" name="kind" value="rebalance">
+        <label>rebalance.enable
+          <select name="value">
+            {{range .RebalanceValues}}
+            <option value="{{.}}" {{if eq . $rebal}}selected{{end}}>{{.}}</option>
+            {{end}}
+          </select>
+        </label>
+        <button type="submit" class="primary">Apply</button>
+      </form>
+      <p class="muted">Cluster-wide, not per-node — Elasticsearch has no per-node rebalance switch.
+        Use the node <code>exclude</code> buttons above to drain a single node.</p>
+    </section>
+    {{end}}
+
     <section class="panel">
       <h2>Shard allocation</h2>
-      <div class="shardgrid scroll">
+      <div class="shardgrid">
         {{range .NodeShards}}
         <div class="shardrow">
           <span class="node{{if eq .Node "unassigned"}} crit{{end}}">{{.Node}}</span>

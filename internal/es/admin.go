@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 )
@@ -16,7 +17,9 @@ import (
 // conservative charset as index names.
 func ValidName(name string) bool { return ValidIndexName(name) }
 
-func prettyJSON(raw []byte) string {
+// PrettyJSON re-indents raw JSON, returning it unchanged when it is not JSON
+// (HEAD responses, NDJSON bulk bodies, plain-text errors).
+func PrettyJSON(raw []byte) string {
 	var buf bytes.Buffer
 	if err := json.Indent(&buf, raw, "", "  "); err != nil {
 		return string(raw)
@@ -100,7 +103,7 @@ func (c *Client) TemplateGet(ctx context.Context, name string) (string, error) {
 	if !resp.OK() {
 		return "", fmt.Errorf("template %s: %s", name, resp.ErrorReason())
 	}
-	return prettyJSON(resp.Body), nil
+	return PrettyJSON(resp.Body), nil
 }
 
 // TemplatePut creates or replaces an index template from raw JSON.
@@ -318,6 +321,143 @@ func flattenValues(m map[string]any) map[string]string {
 		out[k] = fmt.Sprint(v)
 	}
 	return out
+}
+
+// --- shard routing ---
+
+// Routing is the cluster's effective shard-routing state.
+type Routing struct {
+	// Unknown marks a routing state that could not be read at all — distinct
+	// from "read successfully and nothing is restricted".
+	Unknown          bool
+	AllocationEnable string   // all, primaries, new_primaries, none
+	RebalanceEnable  string   // all, primaries, replicas, none
+	ExcludedNodes    []string // cluster.routing.allocation.exclude._name
+}
+
+// Restricted reports whether routing is anything other than fully enabled —
+// the state an operator must not forget to undo after a rolling restart. An
+// unreadable state is not reported as restricted; callers surface that
+// separately rather than claiming a restriction that may not exist.
+func (r *Routing) Restricted() bool {
+	if r.Unknown {
+		return false
+	}
+	return r.AllocationEnable != "all" || r.RebalanceEnable != "all" || len(r.ExcludedNodes) > 0
+}
+
+const (
+	allocationEnableKey = "cluster.routing.allocation.enable"
+	rebalanceEnableKey  = "cluster.routing.rebalance.enable"
+	excludeNameKey      = "cluster.routing.allocation.exclude._name"
+)
+
+// routingBlock mirrors the nested shape of the three routing settings. It is
+// nested rather than flat because filter_path treats dots as path separators,
+// so flat_settings and filter_path cannot be combined.
+type routingBlock struct {
+	Cluster struct {
+		Routing struct {
+			Allocation struct {
+				Enable  string `json:"enable"`
+				Exclude struct {
+					Name string `json:"_name"`
+				} `json:"exclude"`
+			} `json:"allocation"`
+			Rebalance struct {
+				Enable string `json:"enable"`
+			} `json:"rebalance"`
+		} `json:"routing"`
+	} `json:"cluster"`
+}
+
+// routingPath trims _cluster/settings to the three keys below. Unfiltered with
+// include_defaults it is ~34 kB of settings this never looks at, on a page
+// operators refresh constantly during an incident.
+const routingPath = "/_cluster/settings?include_defaults=true&filter_path=" +
+	"*.cluster.routing.allocation.enable," +
+	"*.cluster.routing.rebalance.enable," +
+	"*.cluster.routing.allocation.exclude"
+
+func (c *Client) Routing(ctx context.Context) (*Routing, error) {
+	var raw struct {
+		Persistent routingBlock `json:"persistent"`
+		Transient  routingBlock `json:"transient"`
+		Defaults   routingBlock `json:"defaults"`
+	}
+	if err := c.GetJSON(ctx, routingPath, &raw); err != nil {
+		return nil, err
+	}
+	// Precedence is the one ES applies: transient beats persistent beats default.
+	effective := func(pick func(routingBlock) string, fallback string) string {
+		for _, b := range []routingBlock{raw.Transient, raw.Persistent, raw.Defaults} {
+			if v := pick(b); v != "" {
+				return v
+			}
+		}
+		return fallback
+	}
+
+	r := &Routing{
+		AllocationEnable: effective(func(b routingBlock) string { return b.Cluster.Routing.Allocation.Enable }, "all"),
+		RebalanceEnable:  effective(func(b routingBlock) string { return b.Cluster.Routing.Rebalance.Enable }, "all"),
+	}
+	excluded := effective(func(b routingBlock) string { return b.Cluster.Routing.Allocation.Exclude.Name }, "")
+	for _, n := range strings.Split(excluded, ",") {
+		if n = strings.TrimSpace(n); n != "" {
+			r.ExcludedNodes = append(r.ExcludedNodes, n)
+		}
+	}
+	return r, nil
+}
+
+// nodeNamePattern is deliberately narrower than ES allows: the exclusion
+// setting is a comma-separated list, so a name containing a comma would
+// silently exclude something else.
+var nodeNamePattern = regexp.MustCompile(`^[A-Za-z0-9._-]+$`)
+
+// ExcludeNode adds or removes one node from the allocation exclusion list,
+// preserving the other entries. Excluding a node drains every shard off it.
+func (c *Client) ExcludeNode(ctx context.Context, node string, exclude bool) error {
+	if !nodeNamePattern.MatchString(node) {
+		return fmt.Errorf("invalid node name %q", node)
+	}
+	current, err := c.Routing(ctx)
+	if err != nil {
+		return err
+	}
+	list := slices.DeleteFunc(slices.Clone(current.ExcludedNodes), func(n string) bool { return n == node })
+	if exclude {
+		list = append(list, node)
+	}
+	sort.Strings(list)
+	// An empty join resets the setting instead of storing an empty string.
+	return c.ClusterSettingPut(ctx, excludeNameKey, strings.Join(list, ","))
+}
+
+// The two settings accept different value sets. Exported so the UI renders
+// its dropdowns from the same list that validates the submission.
+var (
+	AllocationEnableValues = []string{"all", "primaries", "new_primaries", "none"}
+	RebalanceEnableValues  = []string{"all", "primaries", "replicas", "none"}
+)
+
+// RoutingEnablePut sets cluster.routing.{allocation,rebalance}.enable.
+func (c *Client) RoutingEnablePut(ctx context.Context, kind, value string) error {
+	var key string
+	var allowed []string
+	switch kind {
+	case "allocation":
+		key, allowed = allocationEnableKey, AllocationEnableValues
+	case "rebalance":
+		key, allowed = rebalanceEnableKey, RebalanceEnableValues
+	default:
+		return fmt.Errorf("unknown routing kind %q", kind)
+	}
+	if !slices.Contains(allowed, value) {
+		return fmt.Errorf("invalid %s.enable value %q", kind, value)
+	}
+	return c.ClusterSettingPut(ctx, key, value)
 }
 
 var settingKeyPattern = regexp.MustCompile(`^[a-z0-9_.\-*\[\]]+$`)

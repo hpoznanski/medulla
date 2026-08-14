@@ -194,6 +194,22 @@ func TestUnauthenticatedRedirects(t *testing.T) {
 	}
 }
 
+// The shard grid must not sit in an overflow container: clipping cuts off the
+// per-shard hover tooltips, which are positioned above their shard and so
+// escape the grid box on the top row.
+func TestShardGridIsNotClipped(t *testing.T) {
+	esrv := fakeES(t)
+	s, codec := testServer(t, esrv.URL)
+
+	_, body := get(t, s, sessionCookieFor(t, codec, "root", "admin"), "/c/dev/overview")
+	if !strings.Contains(body, `class="shardgrid"`) {
+		t.Fatal("shard grid missing from overview")
+	}
+	if strings.Contains(body, `class="shardgrid scroll"`) {
+		t.Error("shard grid carries the scroll class; hover tooltips will be clipped")
+	}
+}
+
 func TestTamperedCookieRedirects(t *testing.T) {
 	s, _ := testServer(t, "http://127.0.0.1:1")
 	req := httptest.NewRequest(http.MethodGet, "/c/dev/overview", nil)

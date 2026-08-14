@@ -120,9 +120,14 @@ func NewServer(
 	s.mux.HandleFunc("POST /logout", s.handleLogout)
 	s.mux.Handle("GET /{$}", s.requireSession(s.handleHome))
 	s.mux.Handle("GET /c/{cluster}/overview", s.requirePerm(rbac.View, s.handleOverview))
+	// Shard routing writes to _cluster/settings, so they need cluster:write.
+	s.mux.Handle("POST /c/{cluster}/routing", s.requirePerm(rbac.ClusterWrite, s.handleRoutingPut))
+	s.mux.Handle("POST /c/{cluster}/routing/exclude", s.requirePerm(rbac.ClusterWrite, s.handleNodeExclude))
 	s.mux.Handle("GET /c/{cluster}/indices", s.requirePerm(rbac.View, s.handleIndices))
 	s.mux.Handle("GET /c/{cluster}/indices/{index}", s.requirePerm(rbac.View, s.handleIndexDetail))
 	s.mux.Handle("POST /c/{cluster}/indices", s.requirePerm(rbac.IndexWrite, s.handleIndexCreate))
+	// More specific than the {action} route below, so the mux prefers it.
+	s.mux.Handle("POST /c/{cluster}/indices/{index}/settings", s.requirePerm(rbac.IndexWrite, s.handleIndexSettingPut))
 	s.mux.Handle("POST /c/{cluster}/indices/{index}/{action}", s.requirePerm(rbac.IndexWrite, s.handleIndexAction))
 	s.mux.Handle("GET /c/{cluster}/cat/{endpoint}", s.requirePerm(rbac.View, s.handleCat))
 	s.mux.Handle("GET /c/{cluster}/console", s.requirePerm(rbac.RestGet, s.handleConsolePage))

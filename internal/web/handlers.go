@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"sort"
 	"strconv"
 	"sync"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/hpoznanski/medulla/internal/auth"
 	"github.com/hpoznanski/medulla/internal/es"
+	"github.com/hpoznanski/medulla/internal/rbac"
 )
 
 func (s *Server) render(w http.ResponseWriter, name string, data any) {
@@ -94,12 +96,12 @@ func (s *Server) handleHome(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
 
+	// One goroutine per visible cluster, each writing its own slot: bounded by
+	// the config, and every one is joined before render.
 	statuses := make([]clusterStatus, len(visible))
 	var wg sync.WaitGroup
 	for i, name := range visible {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			st := clusterStatus{Name: name}
 			client, err := s.clusters.Get(name)
 			if err != nil {
@@ -134,7 +136,7 @@ func (s *Server) handleHome(w http.ResponseWriter, r *http.Request) {
 				st.Version = info.Version
 			}
 			statuses[i] = st
-		}()
+		})
 	}
 	wg.Wait()
 
@@ -162,6 +164,14 @@ type overviewData struct {
 	NodeShards []nodeShards
 	Explains   []explainGroup
 	ExplainCap int
+	Routing    *es.Routing
+	Excluded   map[string]bool // node name -> excluded from allocation
+	ShardCount map[string]int  // node name -> shards still held
+	CanCluster bool
+	Notice     string
+
+	AllocationValues []string
+	RebalanceValues  []string
 }
 
 // explainGroup collects unassigned shards sharing one root cause.
@@ -177,6 +187,7 @@ type nodeShards struct {
 }
 
 func (s *Server) handleOverview(w http.ResponseWriter, r *http.Request) {
+	sess := sessionFrom(r)
 	cluster := r.PathValue("cluster")
 	client := clientFrom(r)
 	page := s.page(r, "overview")
@@ -195,6 +206,26 @@ func (s *Server) handleOverview(w http.ResponseWriter, r *http.Request) {
 
 	explains, capped := s.explainUnassigned(r.Context(), client, overview.Shards)
 
+	// Routing state only drives the controls and the warning banner, so a
+	// failure to read it must not cost the operator the whole overview.
+	routing, err := client.Routing(r.Context())
+	if err != nil {
+		s.logger.WarnContext(r.Context(), "reading routing state failed", "cluster", cluster, "err", err)
+		routing = &es.Routing{Unknown: true}
+	}
+	excluded := make(map[string]bool, len(routing.ExcludedNodes))
+	for _, n := range routing.ExcludedNodes {
+		excluded[n] = true
+	}
+	// An excluded node is only *drained* once it holds nothing — that is the
+	// point at which it is safe to stop, so the two states must look different.
+	shardCount := map[string]int{}
+	for _, sh := range overview.Shards {
+		if sh.Node != "" && sh.State != "UNASSIGNED" {
+			shardCount[sh.Node]++
+		}
+	}
+
 	s.render(w, "overview.html", overviewData{
 		pageData:   page,
 		Overview:   overview,
@@ -202,7 +233,48 @@ func (s *Server) handleOverview(w http.ResponseWriter, r *http.Request) {
 		NodeShards: groupShards(overview.Shards),
 		Explains:   explains,
 		ExplainCap: capped,
+		Routing:    routing,
+		Excluded:   excluded,
+		ShardCount: shardCount,
+		CanCluster: s.rbac.Allowed(sess.Roles, cluster, rbac.ClusterWrite),
+		Notice:     r.URL.Query().Get("notice"),
+
+		AllocationValues: es.AllocationEnableValues,
+		RebalanceValues:  es.RebalanceEnableValues,
 	})
+}
+
+// handleRoutingPut sets cluster-wide allocation or rebalance enablement.
+func (s *Server) handleRoutingPut(w http.ResponseWriter, r *http.Request) {
+	cluster := r.PathValue("cluster")
+	client := clientFrom(r)
+
+	kind, value := r.PostFormValue("kind"), r.PostFormValue("value")
+	err := client.RoutingEnablePut(r.Context(), kind, value)
+	s.redirectNotice(w, r, "/c/"+cluster+"/overview", kind+".enable = "+value, err)
+}
+
+// handleNodeExclude drains a node by adding it to the allocation exclusion
+// list, or puts it back. Excluding moves every shard off the node, so it
+// takes the same type-the-name confirmation as an index delete.
+func (s *Server) handleNodeExclude(w http.ResponseWriter, r *http.Request) {
+	cluster := r.PathValue("cluster")
+	client := clientFrom(r)
+
+	node := r.PostFormValue("node")
+	exclude := r.PostFormValue("action") == "exclude"
+	if exclude && r.PostFormValue("confirm") != node {
+		http.Redirect(w, r, "/c/"+cluster+"/overview?notice="+
+			url.QueryEscape("type the node name to confirm draining "+node), http.StatusSeeOther)
+		return
+	}
+
+	action := "re-include " + node
+	if exclude {
+		action = "exclude " + node + " (draining shards)"
+	}
+	err := client.ExcludeNode(r.Context(), node, exclude)
+	s.redirectNotice(w, r, "/c/"+cluster+"/overview", action, err)
 }
 
 // maxExplains bounds allocation-explain calls per overview render.

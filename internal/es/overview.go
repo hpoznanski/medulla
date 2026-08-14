@@ -14,6 +14,16 @@ type Overview struct {
 	Health HealthInfo
 	Nodes  []NodeInfo
 	Shards []ShardInfo
+	Totals Totals
+}
+
+// Totals are cluster-wide index figures from _cluster/stats.
+type Totals struct {
+	OK        bool // false when _cluster/stats was unavailable
+	Indices   int
+	Docs      int64
+	Deleted   int64
+	StoreSize string
 }
 
 type HealthInfo struct {
@@ -88,7 +98,46 @@ func (c *Client) Overview(ctx context.Context) (*Overview, error) {
 	if err := c.GetJSON(ctx, "/_cat/shards?format=json&h="+shardCols, &o.Shards); err != nil {
 		return nil, err
 	}
+
+	// _cluster/stats is the heaviest call here and only feeds the totals row:
+	// a failure degrades that row instead of the whole page.
+	var stats struct {
+		Indices struct {
+			Count int `json:"count"`
+			Docs  struct {
+				Count   int64 `json:"count"`
+				Deleted int64 `json:"deleted"`
+			} `json:"docs"`
+			Store struct {
+				SizeInBytes int64 `json:"size_in_bytes"`
+			} `json:"store"`
+		} `json:"indices"`
+	}
+	if err := c.GetJSON(ctx, "/_cluster/stats", &stats); err == nil {
+		o.Totals = Totals{
+			OK:        true,
+			Indices:   stats.Indices.Count,
+			Docs:      stats.Indices.Docs.Count,
+			Deleted:   stats.Indices.Docs.Deleted,
+			StoreSize: HumanBytes(stats.Indices.Store.SizeInBytes),
+		}
+	}
 	return &o, nil
+}
+
+// HumanBytes formats a byte count the way _cat does: 1024-based, one decimal.
+func HumanBytes(n int64) string {
+	const unit = 1024
+	if n < unit {
+		return fmt.Sprintf("%db", n)
+	}
+	div, exp := int64(unit), 0
+	for v := n / unit; v >= unit; v /= unit {
+		div *= unit
+		exp++
+	}
+	// int64 tops out in the exabyte range, so exp never exceeds 5.
+	return fmt.Sprintf("%.1f%s", float64(n)/float64(div), []string{"kb", "mb", "gb", "tb", "pb", "eb"}[exp])
 }
 
 // atoi parses the leading digits, tolerating _cat values like "" or "51.5"
@@ -162,6 +211,6 @@ func (c *Client) AllocationExplainFor(ctx context.Context, index string, shard i
 	}
 	return &AllocationExplain{
 		Explanation: explanation,
-		RawJSON:     prettyJSON(resp.Body),
+		RawJSON:     PrettyJSON(resp.Body),
 	}, nil
 }

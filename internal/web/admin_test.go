@@ -1,6 +1,9 @@
 package web
 
 import (
+	"fmt"
+	"html"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -102,6 +105,403 @@ func TestConsoleGating(t *testing.T) {
 		url.Values{"method": {"TRACE"}, "path": {"/"}})
 	if recPost.Code != http.StatusBadRequest {
 		t.Errorf("TRACE = %d, want 400", recPost.Code)
+	}
+}
+
+// doWith issues a request carrying several cookies and returns the recorder.
+func doWith(t *testing.T, s *Server, cookies []*http.Cookie, method, path string, form url.Values) *httptest.ResponseRecorder {
+	t.Helper()
+	var req *http.Request
+	if method == http.MethodGet {
+		req = httptest.NewRequest(method, path, nil)
+	} else {
+		req = httptest.NewRequest(method, path, strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	}
+	for _, c := range cookies {
+		req.AddCookie(c)
+	}
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	return rec
+}
+
+func historyCookie(t *testing.T, rec *httptest.ResponseRecorder) *http.Cookie {
+	t.Helper()
+	for _, c := range rec.Result().Cookies() {
+		if c.Name == consoleCookie {
+			return c
+		}
+	}
+	return nil
+}
+
+// decodeHistory reads the entries a cookie carries, through the same
+// verification path the handler uses.
+func decodeHistory(t *testing.T, s *Server, c *http.Cookie) []consoleEntry {
+	t.Helper()
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	if c != nil {
+		req.AddCookie(c)
+	}
+	return s.consoleHistory(req)
+}
+
+func TestConsoleHistoryRoundTrip(t *testing.T) {
+	esrv := fakeESAdmin(t)
+	s, codec := testServerWithRoles(t, esrv.URL)
+	admin := sessionCookieFor(t, codec, "u", "admin")
+
+	rec := doWith(t, s, []*http.Cookie{admin}, http.MethodPost, "/c/dev/console",
+		url.Values{"method": {"GET"}, "path": {"/_cluster/health"}})
+	hist := historyCookie(t, rec)
+	if hist == nil {
+		t.Fatal("no history cookie set")
+	}
+	if !hist.HttpOnly || hist.SameSite != http.SameSiteLaxMode {
+		t.Errorf("history cookie flags: HttpOnly=%v SameSite=%v", hist.HttpOnly, hist.SameSite)
+	}
+
+	// the executed request comes back on the page it was run from...
+	if body := rec.Body.String(); !strings.Contains(body, "History") {
+		t.Error("history section missing from the response that created it")
+	}
+	// ...and on a later page load carrying the cookie.
+	rec = doWith(t, s, []*http.Cookie{admin, hist}, http.MethodGet, "/c/dev/console", nil)
+	if body := rec.Body.String(); !strings.Contains(body, "/_cluster/health") {
+		t.Error("history entry not rendered on later load")
+	}
+
+	// prefill from a history link must not execute anything
+	rec = doWith(t, s, []*http.Cookie{admin, hist}, http.MethodGet,
+		"/c/dev/console?method=DELETE&path=/logs-1", nil)
+	if body := rec.Body.String(); !strings.Contains(body, `value="/logs-1"`) {
+		t.Error("prefill did not populate the path field")
+	}
+	if strings.Contains(rec.Body.String(), "Response — HTTP") {
+		t.Error("prefill executed the request")
+	}
+}
+
+// A history link is only useful if the path survives the round trip through
+// the URL, so follow the rendered href rather than a hand-built one.
+func TestConsoleHistoryLinkRoundTrip(t *testing.T) {
+	esrv := fakeESAdmin(t)
+	s, codec := testServerWithRoles(t, esrv.URL)
+	admin := sessionCookieFor(t, codec, "u", "admin")
+
+	const path = "/_cat/indices?v&h=index,health"
+	rec := doWith(t, s, []*http.Cookie{admin}, http.MethodPost, "/c/dev/console",
+		url.Values{"method": {"GET"}, "path": {path}})
+
+	href := historyHref(t, rec.Body.String())
+	rec = doWith(t, s, []*http.Cookie{admin, historyCookie(t, rec)}, http.MethodGet, href, nil)
+	if body := rec.Body.String(); !strings.Contains(body, `value="`+html.EscapeString(path)+`"`) {
+		t.Errorf("following %q did not restore the path field", href)
+	}
+}
+
+// historyHref returns the first console history link in a rendered page.
+func historyHref(t *testing.T, body string) string {
+	t.Helper()
+	_, after, ok := strings.Cut(body, `<a href="/c/dev/console?method=`)
+	if !ok {
+		t.Fatal("no history link rendered")
+	}
+	link, _, _ := strings.Cut(after, `"`)
+	return "/c/dev/console?method=" + html.UnescapeString(link)
+}
+
+func TestConsoleHistoryRejectsTamperedCookie(t *testing.T) {
+	esrv := fakeESAdmin(t)
+	s, codec := testServerWithRoles(t, esrv.URL)
+	admin := sessionCookieFor(t, codec, "u", "admin")
+
+	rec := doWith(t, s, []*http.Cookie{admin}, http.MethodPost, "/c/dev/console",
+		url.Values{"method": {"GET"}, "path": {"/_cluster/health"}})
+	hist := historyCookie(t, rec)
+
+	body, _, _ := strings.Cut(hist.Value, ".")
+	forged := &http.Cookie{Name: consoleCookie, Value: body + ".not-a-real-signature"}
+	if got := decodeHistory(t, s, forged); got != nil {
+		t.Errorf("forged history accepted: %+v", got)
+	}
+}
+
+func TestConsoleHistoryEviction(t *testing.T) {
+	esrv := fakeESAdmin(t)
+	s, codec := testServerWithRoles(t, esrv.URL)
+	admin := sessionCookieFor(t, codec, "u", "admin")
+
+	var hist *http.Cookie
+	for i := range consoleHistoryMax + 5 {
+		cookies := []*http.Cookie{admin}
+		if hist != nil {
+			cookies = append(cookies, hist)
+		}
+		rec := doWith(t, s, cookies, http.MethodPost, "/c/dev/console",
+			url.Values{"method": {"GET"}, "path": {fmt.Sprintf("/idx-%02d/_stats", i)}})
+		if c := historyCookie(t, rec); c != nil {
+			hist = c
+		}
+	}
+
+	entries := decodeHistory(t, s, hist)
+	if len(entries) > consoleHistoryMax {
+		t.Errorf("history holds %d entries, want at most %d", len(entries), consoleHistoryMax)
+	}
+	if len(hist.Value) > consoleCookieMax {
+		t.Errorf("cookie is %d bytes, want at most %d", len(hist.Value), consoleCookieMax)
+	}
+	if entries[0].Path != fmt.Sprintf("/idx-%02d/_stats", consoleHistoryMax+4) {
+		t.Errorf("newest entry = %q, want the most recent request", entries[0].Path)
+	}
+}
+
+func TestConsoleOversizedBodyDropped(t *testing.T) {
+	esrv := fakeESAdmin(t)
+	s, codec := testServerWithRoles(t, esrv.URL)
+	admin := sessionCookieFor(t, codec, "u", "admin")
+
+	big := `{"q":"` + strings.Repeat("x", consoleBodyMax) + `"}`
+	rec := doWith(t, s, []*http.Cookie{admin}, http.MethodPost, "/c/dev/console",
+		url.Values{"method": {"POST"}, "path": {"/idx/_search"}, "body": {big}})
+
+	entries := decodeHistory(t, s, historyCookie(t, rec))
+	if len(entries) != 1 {
+		t.Fatalf("entries = %+v", entries)
+	}
+	if entries[0].Body != "" {
+		t.Error("oversized body stored; a truncated body would look re-runnable but be invalid JSON")
+	}
+	if entries[0].Path != "/idx/_search" {
+		t.Errorf("path = %q, want the request kept without its body", entries[0].Path)
+	}
+}
+
+func TestConsolePrettyPrintsResponse(t *testing.T) {
+	esrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"a":{"b":1}}`)) // single line in, indented out
+	}))
+	t.Cleanup(esrv.Close)
+	s, codec := testServerWithRoles(t, esrv.URL)
+
+	rec := doWith(t, s, []*http.Cookie{sessionCookieFor(t, codec, "u", "admin")}, http.MethodPost,
+		"/c/dev/console", url.Values{"method": {"GET"}, "path": {"/x"}})
+	if body := rec.Body.String(); !strings.Contains(body, "&#34;a&#34;: {\n") {
+		t.Error("response was not re-indented")
+	}
+}
+
+// fakeESRouting serves an overview plus cluster settings, recording writes.
+func fakeESRouting(t *testing.T, put *string) *httptest.Server {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPut && r.URL.Path == "/_cluster/settings" {
+			b, _ := io.ReadAll(r.Body)
+			*put = string(b)
+			w.Write([]byte(`{"acknowledged":true}`))
+			return
+		}
+		switch r.URL.Path {
+		case "/_cluster/settings":
+			w.Write([]byte(`{"persistent":{},"transient":{},"defaults":{}}`))
+		case "/_cluster/health":
+			w.Write([]byte(`{"status":"green","number_of_nodes":2}`))
+		case "/_cat/nodes":
+			w.Write([]byte(`[{"name":"es01","ip":"10.0.0.1","node.role":"dm","master":"*"},{"name":"es02","ip":"10.0.0.2","node.role":"dm","master":"-"}]`))
+		default:
+			w.Write([]byte(`[]`))
+		}
+	}))
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+func TestNodeExcludeRequiresConfirmation(t *testing.T) {
+	var put string
+	esrv := fakeESRouting(t, &put)
+	s, codec := testServerWithRoles(t, esrv.URL)
+	admin := sessionCookieFor(t, codec, "u", "admin")
+
+	// draining moves every shard off the node, so a mistyped name must not proceed
+	rec := post(t, s, admin, "/c/dev/routing/exclude",
+		url.Values{"node": {"es01"}, "action": {"exclude"}, "confirm": {"es02"}})
+	if put != "" {
+		t.Errorf("unconfirmed exclude wrote to ES: %s", put)
+	}
+	if loc := rec.Header().Get("Location"); !strings.Contains(loc, "confirm") {
+		t.Errorf("notice = %q", loc)
+	}
+
+	rec = post(t, s, admin, "/c/dev/routing/exclude",
+		url.Values{"node": {"es01"}, "action": {"exclude"}, "confirm": {"es01"}})
+	if !strings.Contains(put, `"cluster.routing.allocation.exclude._name":"es01"`) {
+		t.Errorf("confirmed exclude body = %s", put)
+	}
+	if loc := rec.Header().Get("Location"); !strings.Contains(loc, "draining") {
+		t.Errorf("notice = %q", loc)
+	}
+
+	// re-including is safe and needs no confirmation
+	put = ""
+	post(t, s, admin, "/c/dev/routing/exclude", url.Values{"node": {"es01"}, "action": {"include"}})
+	if !strings.Contains(put, `"cluster.routing.allocation.exclude._name":null`) {
+		t.Errorf("include body = %s", put)
+	}
+}
+
+// An excluded node reads "draining" only while it still holds shards; once
+// empty it must say drained, which is the signal that it is safe to stop.
+func TestExcludedNodeShowsDrainProgress(t *testing.T) {
+	esrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/_cluster/settings":
+			w.Write([]byte(`{"persistent":{"cluster":{"routing":{"allocation":{"exclude":{"_name":"es01,es02"}}}}},"transient":{},"defaults":{}}`))
+		case "/_cluster/health":
+			w.Write([]byte(`{"status":"green","number_of_nodes":2}`))
+		case "/_cat/nodes":
+			w.Write([]byte(`[{"name":"es01","ip":"10.0.0.1"},{"name":"es02","ip":"10.0.0.2"}]`))
+		case "/_cat/shards":
+			// es01 still holds two; es02 is empty, and the unassigned shard
+			// must not be counted against any node
+			w.Write([]byte(`[{"index":"i","shard":"0","prirep":"p","state":"STARTED","node":"es01"},
+				{"index":"i","shard":"1","prirep":"p","state":"STARTED","node":"es01"},
+				{"index":"i","shard":"2","prirep":"r","state":"UNASSIGNED","node":""}]`))
+		default:
+			w.Write([]byte(`[]`))
+		}
+	}))
+	t.Cleanup(esrv.Close)
+	s, codec := testServerWithRoles(t, esrv.URL)
+
+	_, body := get(t, s, sessionCookieFor(t, codec, "u", "admin"), "/c/dev/overview")
+	if !strings.Contains(body, "draining · 2 left") {
+		t.Error("node still holding shards is not reported as draining with a count")
+	}
+	if !strings.Contains(body, "drained — safe to stop") {
+		t.Error("emptied node still reads as draining")
+	}
+}
+
+func TestRoutingNeedsClusterWrite(t *testing.T) {
+	var put string
+	esrv := fakeESRouting(t, &put)
+	s, codec := testServerWithRoles(t, esrv.URL)
+
+	// read-only has view+rest:get but not cluster:write
+	for _, path := range []string{"/c/dev/routing", "/c/dev/routing/exclude"} {
+		rec := post(t, s, sessionCookieFor(t, codec, "u", "read-only"), path,
+			url.Values{"kind": {"allocation"}, "value": {"none"}, "node": {"es01"}, "action": {"exclude"}, "confirm": {"es01"}})
+		if rec.Code != http.StatusForbidden {
+			t.Errorf("%s = %d, want 403", path, rec.Code)
+		}
+	}
+	if put != "" {
+		t.Errorf("denied user still wrote to ES: %s", put)
+	}
+}
+
+func TestRoutingControlsHiddenWithoutPermission(t *testing.T) {
+	var put string
+	esrv := fakeESRouting(t, &put)
+	s, codec := testServerWithRoles(t, esrv.URL)
+
+	_, adminBody := get(t, s, sessionCookieFor(t, codec, "u", "admin"), "/c/dev/overview")
+	for _, want := range []string{"Cluster routing", "allocation.enable", "exclude"} {
+		if !strings.Contains(adminBody, want) {
+			t.Errorf("admin overview missing %q", want)
+		}
+	}
+
+	_, viewerBody := get(t, s, sessionCookieFor(t, codec, "u", "read-only"), "/c/dev/overview")
+	if strings.Contains(viewerBody, "Cluster routing") || strings.Contains(viewerBody, `value="exclude"`) {
+		t.Error("viewer sees routing controls")
+	}
+	// Nothing is excluded here, so the column would be entirely empty for them.
+	if strings.Contains(viewerBody, "<th>allocation</th>") {
+		t.Error("viewer sees an empty allocation column")
+	}
+}
+
+// The drain badge is read-only status worth showing to a viewer; the buttons
+// are not. The column appears for them only when a node is actually excluded.
+func TestViewerSeesDrainStatusButNoControls(t *testing.T) {
+	esrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/_cluster/settings":
+			w.Write([]byte(`{"persistent":{"cluster":{"routing":{"allocation":{"exclude":{"_name":"es01"}}}}},"transient":{},"defaults":{}}`))
+		case "/_cluster/health":
+			w.Write([]byte(`{"status":"green","number_of_nodes":1}`))
+		case "/_cat/nodes":
+			w.Write([]byte(`[{"name":"es01","ip":"10.0.0.1"}]`))
+		default:
+			w.Write([]byte(`[]`))
+		}
+	}))
+	t.Cleanup(esrv.Close)
+	s, codec := testServerWithRoles(t, esrv.URL)
+
+	_, body := get(t, s, sessionCookieFor(t, codec, "u", "read-only"), "/c/dev/overview")
+	if !strings.Contains(body, "<th>allocation</th>") || !strings.Contains(body, "drained") {
+		t.Error("viewer cannot see that a node is excluded")
+	}
+	if strings.Contains(body, "re-include") || strings.Contains(body, `value="exclude"`) {
+		t.Error("viewer sees routing buttons")
+	}
+}
+
+func TestRestrictedRoutingWarns(t *testing.T) {
+	esrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/_cluster/settings":
+			w.Write([]byte(`{"persistent":{"cluster":{"routing":{"allocation":{"enable":"none"}}}},"transient":{},"defaults":{}}`))
+		case "/_cluster/health":
+			w.Write([]byte(`{"status":"green","number_of_nodes":1}`))
+		default:
+			w.Write([]byte(`[]`))
+		}
+	}))
+	t.Cleanup(esrv.Close)
+	s, codec := testServerWithRoles(t, esrv.URL)
+
+	_, body := get(t, s, sessionCookieFor(t, codec, "u", "read-only"), "/c/dev/overview")
+	if !strings.Contains(body, "Shard routing is restricted") {
+		t.Error("no warning banner while allocation is disabled")
+	}
+}
+
+// A cluster that will not report its routing state must still render.
+func TestOverviewSurvivesRoutingFailure(t *testing.T) {
+	esrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/_cluster/settings" {
+			w.WriteHeader(http.StatusForbidden)
+			w.Write([]byte(`{"error":{"type":"security_exception","reason":"no permission"}}`))
+			return
+		}
+		if r.URL.Path == "/_cluster/health" {
+			w.Write([]byte(`{"status":"green","number_of_nodes":1}`))
+			return
+		}
+		w.Write([]byte(`[]`))
+	}))
+	t.Cleanup(esrv.Close)
+	s, codec := testServerWithRoles(t, esrv.URL)
+
+	rec, body := get(t, s, sessionCookieFor(t, codec, "u", "admin"), "/c/dev/overview")
+	if rec.Code != http.StatusOK || !strings.Contains(body, "shardgrid") {
+		t.Errorf("overview lost to a routing read failure: status=%d", rec.Code)
+	}
+	// An unreadable state must not be dressed up as a known restriction, and
+	// controls that would submit a bogus current value must not render.
+	if strings.Contains(body, "Shard routing is restricted") {
+		t.Error("unreadable routing state reported as restricted")
+	}
+	if !strings.Contains(body, "could not be read") {
+		t.Error("no indication that routing state is unavailable")
+	}
+	if strings.Contains(body, "Cluster routing") || strings.Contains(body, "<th>allocation</th>") {
+		t.Error("routing controls rendered without a known current state")
 	}
 }
 

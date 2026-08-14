@@ -131,6 +131,58 @@ func TestCatAllowlist(t *testing.T) {
 	}
 }
 
+func TestIndexSettingsMergesDefaults(t *testing.T) {
+	srv := fakeCluster(t, `{}`, map[string]string{
+		"/logs-1/_settings": `{"logs-1":{
+			"settings":{"index.number_of_shards":"3","index.refresh_interval":"30s"},
+			"defaults":{"index.refresh_interval":"1s","index.codec":"LZ4"}}}`,
+	})
+	got, err := newTestClient(t, srv.URL).IndexSettings(context.Background(), "logs-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	want := []IndexSetting{
+		{Key: "index.codec", Value: "LZ4", Default: true},
+		{Key: "index.number_of_shards", Value: "3"},
+		{Key: "index.refresh_interval", Value: "30s"}, // explicit wins over the 1s default
+	}
+	if len(got) != len(want) {
+		t.Fatalf("got %d settings, want %d: %+v", len(got), len(want), got)
+	}
+	for i, w := range want {
+		if got[i] != w {
+			t.Errorf("setting %d = %+v, want %+v", i, got[i], w)
+		}
+	}
+
+	if _, err := newTestClient(t, srv.URL).IndexSettings(context.Background(), "../etc"); err == nil {
+		t.Error("bad index name accepted")
+	}
+}
+
+func TestHumanBytes(t *testing.T) {
+	tests := []struct {
+		in   int64
+		want string
+	}{
+		{0, "0b"},
+		{512, "512b"},
+		{1024, "1.0kb"},
+		{1536, "1.5kb"},
+		{1 << 20, "1.0mb"},
+		{1 << 30, "1.0gb"},
+		{1 << 40, "1.0tb"},
+		{1 << 50, "1.0pb"},
+		{1<<62 + 1<<61, "6.0eb"}, // exabyte range must not index past the unit table
+	}
+	for _, tt := range tests {
+		if got := HumanBytes(tt.in); got != tt.want {
+			t.Errorf("HumanBytes(%d) = %q, want %q", tt.in, got, tt.want)
+		}
+	}
+}
+
 func TestIndicesList(t *testing.T) {
 	srv := fakeCluster(t, `{}`, map[string]string{
 		"/_cat/indices": `[{"index":"b","health":"green","status":"open","pri":"1","rep":"1","docs.count":"5","store.size":"10kb"},{"index":"a","health":"yellow","status":"open","pri":"2","rep":"2"}]`,
