@@ -29,6 +29,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   a Limits and tunables table, and a "What Medulla is not" section.
 - README: full RBAC permission table, including the note that write atoms do
   not imply `view`.
+- README: container image section — coordinates, multi-arch support
+  (`linux/amd64`, `linux/arm64`), tagging scheme, and the operational
+  consequences of the `FROM scratch` image (no shell, uid 65534).
+- README: CI, release, license and Go version badges.
 
 ### Changed
 
@@ -50,6 +54,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A cluster whose settings cannot be read is reported as unknown rather than
   as restricted, and its routing controls are hidden instead of submitting a
   guessed current value.
+- Chart README pinned a stale `--version 0.1.0` in its install example.
 
 ## [0.3.0] - 2026-07-30
 
