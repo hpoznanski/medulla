@@ -233,6 +233,30 @@ session:
   # insecure_cookie: true       # plain-HTTP dev only; cookies are Secure by default
 ```
 
+## Container image
+
+Published to GitHub Container Registry on every version tag, built for **`linux/amd64` and `linux/arm64`** — so Graviton, Ampere and Apple Silicon run natively, with no emulation.
+
+```sh
+docker run -d --name medulla -p 8080:8080 \
+  -v /etc/medulla/config.yaml:/etc/medulla/config.yaml:ro \
+  -e SESSION_SECRET \
+  ghcr.io/hpoznanski/medulla:0.4.0
+```
+
+Tags are `MAJOR.MINOR.PATCH` and `MAJOR.MINOR` (`0.4.0`, `0.4`). **There is no `latest`** — pin a version deliberately rather than having an image change under you on the next `docker pull`.
+
+Two consequences of the `FROM scratch` image worth knowing before you deploy it:
+
+- **It runs as uid 65534 (nobody) and there is no shell.** A bind-mounted config must be readable by that uid, and `docker exec` cannot give you a prompt — there is no `/bin/sh` to exec. That is the point: a compromised container has no tooling to pivot with. Debug from the JSON logs and `/healthz`.
+- **The only writable path is whatever you mount.** Medulla never writes to disk — no cache, no state, no temp files — so a read-only root filesystem needs no exceptions.
+
+Verify what you are running before you trust it:
+
+```sh
+docker buildx imagetools inspect ghcr.io/hpoznanski/medulla:0.4.0   # both platforms listed
+```
+
 ## Production deployment (Kubernetes)
 
 Helm chart in [`deploy/helm/medulla`](deploy/helm/medulla) — hardened defaults (nonroot, read-only rootfs, no capabilities, no SA token), config-checksum rollouts, zone spreading, PDB. See the [chart README](deploy/helm/medulla/README.md) for installation, secret handling, and the security model.
