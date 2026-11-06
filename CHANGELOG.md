@@ -15,7 +15,9 @@ Release candidate for 1.0.0: no new features, everything here hardens what
 - Signed releases: the container image and the Helm chart are signed with
   cosign keyless signing (GitHub OIDC identity of the release workflow,
   recorded in the Rekor transparency log). The image also carries an SPDX
-  SBOM and SLSA provenance (`mode=max`). Verification commands in the README.
+  SBOM and SLSA provenance (`mode=max`). Verification commands in the README;
+  they need cosign v3 or later (v2 does not read the new bundle format and
+  reports `no signatures found`).
 - Support matrix tested in CI on every change: Elasticsearch 7.17, 8.19, 9.2
   and OpenSearch 2.19, 3.3, each through `scripts/compat.sh` — every page,
   index/alias/template/settings/routing writes, cache invalidation after each

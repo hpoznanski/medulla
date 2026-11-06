@@ -254,6 +254,8 @@ Two consequences of the `FROM scratch` image worth knowing before you deploy it:
 
 Verify what you are running before you trust it. Every release image and chart is signed with [cosign](https://github.com/sigstore/cosign) keyless signing — the signature ties the digest to this repository's release workflow, and is recorded in the public Rekor transparency log — and the image carries an SPDX SBOM and SLSA build provenance:
 
+Use **cosign v3 or later**: releases are signed in the new Sigstore bundle format, stored as OCI referrers, and cosign v2 reports `no signatures found` for them.
+
 ```sh
 # signature: built by this repo's CI from a version tag, nothing else
 cosign verify ghcr.io/hpoznanski/medulla:0.8.0 \
