@@ -27,6 +27,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   its node as `src -> ip id dst`, which matched no node, so a draining node's
   `N left` undercounted while shards were moving.
 
+### Security
+
+- Go toolchain raised from 1.26.6 to 1.26.10 in `go.mod` (CI builds and
+  tests with it). Clears 13 standard-library advisories that `govulncheck`
+  reported as reachable, among them `html/template` escaping fixes
+  (GO-2026-6599, GO-2026-6600) on the page-rendering path and
+  `crypto/x509` (GO-2026-6809). `govulncheck` now reports no reachable
+  vulnerabilities. The release image already built with Go 1.27.
+- `golang.org/x/crypto` v0.54.0 → v0.58.0, `github.com/go-ldap/ldap/v3`
+  v3.4.14 → v3.4.15.
+- Known and not applicable: GO-2026-5932 flags the `x/crypto` module for its
+  unmaintained `openpgp` package. Medulla imports only `x/crypto/bcrypt`, and
+  the fix is not in a tagged release yet, so the module stays on a tagged
+  version instead of an untagged commit.
+
 ## [0.4.0] - 2026-08-14
 
 ### Added
