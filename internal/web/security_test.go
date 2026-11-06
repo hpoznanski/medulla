@@ -90,6 +90,8 @@ func TestListPagesRejectInjection(t *testing.T) {
 		{"landing", s, admin, "/?" + hostile},
 		{"landing list", s, admin, "/?layout=list&" + hostile},
 		{"overview", so, root, "/c/dev/overview?" + hostile},
+		{"indices", so, root, "/c/dev/indices?" + hostile},
+		{"cat", so, root, "/c/dev/cat/shards?" + hostile},
 	} {
 		req := httptest.NewRequest(http.MethodGet, tc.path, nil)
 		req.AddCookie(tc.c)

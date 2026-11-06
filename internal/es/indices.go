@@ -25,7 +25,7 @@ type IndexInfo struct {
 func (c *Client) Indices(ctx context.Context) ([]IndexInfo, error) {
 	var out []IndexInfo
 	cols := "index,health,status,pri,rep,docs.count,store.size"
-	if err := c.GetJSON(ctx, "/_cat/indices?format=json&h="+cols, &out); err != nil {
+	if err := c.GetJSONCached(ctx, "/_cat/indices?format=json&h="+cols, &out); err != nil {
 		return nil, err
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Index < out[j].Index })
@@ -199,7 +199,7 @@ func (c *Client) Cat(ctx context.Context, endpoint string) (*CatResult, error) {
 	if !ValidCatEndpoint(endpoint) {
 		return nil, fmt.Errorf("unknown cat endpoint %q", endpoint)
 	}
-	resp, err := c.Do(ctx, http.MethodGet, "/_cat/"+endpoint+"?format=json", nil)
+	resp, err := c.GetCached(ctx, "/_cat/"+endpoint+"?format=json")
 	if err != nil {
 		return nil, err
 	}

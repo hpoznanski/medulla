@@ -173,3 +173,21 @@ func TestHumanCount(t *testing.T) {
 		}
 	}
 }
+
+func TestSortRowsByValue(t *testing.T) {
+	rows := []string{"10kb", "", "1.5gb", "900b", "2mb"}
+	sortRows(rows, false, func(s string) string { return s })
+	if want := []string{"900b", "10kb", "2mb", "1.5gb", ""}; !slices.Equal(rows, want) {
+		t.Errorf("sizes asc = %v, want %v", rows, want)
+	}
+	sortRows(rows, true, func(s string) string { return s })
+	if want := []string{"1.5gb", "2mb", "10kb", "900b", ""}; !slices.Equal(rows, want) {
+		t.Errorf("sizes desc = %v, want %v (empty stays last)", rows, want)
+	}
+
+	nums := []string{"10", "9", "100", "45%", "abc"}
+	sortRows(nums, false, func(s string) string { return s })
+	if want := []string{"9", "10", "45%", "100", "abc"}; !slices.Equal(nums, want) {
+		t.Errorf("numbers asc = %v, want %v", nums, want)
+	}
+}

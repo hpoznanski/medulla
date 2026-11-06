@@ -20,13 +20,13 @@ Medulla is the brain stem: small, always on, controls the vital functions.
 - **Clusters landing page** — every cluster at a glance as cards or a sortable list: health, version/flavor, nodes, indices, docs, shards, unassigned/relocating, store size, response time. Problems first, a health summary that filters, a name filter with native suggestions, opt-in auto-refresh; unreachable clusters show the classified cause (timeout, refused, dns, tls, auth). Cluster switcher on every page.
 - **Overview** — cluster totals (indices, docs, store size), a sortable node table (heap/disk/CPU/load/shards), an index × node shard allocation matrix with an index filter and per-shard hover details, opt-in auto-refresh, and an *allocation explain* panel that shows the actual root cause for every unassigned shard (deciders parsed, grouped by cause).
 - **Shard routing** — drain a single node with one click (type-name-to-confirm), showing live progress until it reports *drained — safe to stop*; cluster-wide `allocation.enable` / `rebalance.enable` switches, with a standing warning while any restriction is in place.
-- **Index management** — create, delete (type-name-to-confirm), open/close, refresh, flush, force-merge; settings/mappings/aliases detail view; edit or reset any dynamic index setting, with ES defaults shown alongside what is explicitly set.
+- **Index management** — sortable index list (health, state, shards, docs, size by value) with a health summary that filters, a name filter with suggestions and opt-in auto-refresh; create, delete (type-name-to-confirm), open/close, refresh, flush, force-merge; settings/mappings/aliases detail view; edit or reset any dynamic index setting, with ES defaults shown alongside what is explicitly set.
 - **Aliases** — list, add, remove.
 - **Index templates** — list, inspect, create/update via JSON editor, delete.
 - **Snapshots** — repository management, create/restore/delete snapshots.
 - **Cluster settings** — persistent/transient/defaults browser, edit with reset-to-default.
 - **Analyze** — `_analyze` playground for analyzers and tokenizers.
-- **Cat browser** — 16 allowlisted `_cat` endpoints as sortable tables, column order preserved. Anything outside the list is reachable from the REST console.
+- **Cat browser** — 16 allowlisted `_cat` endpoints as tables sortable on any column (numbers and sizes like `1.2gb` by value), with a row filter; ES column and row order preserved until you sort. Anything outside the list is reachable from the REST console.
 - **REST console** — free-form requests, permission-gated: `rest:get` users get GET/HEAD only, enforced server-side. Request and response JSON are pretty-printed, and recent requests are replayable from a signed-cookie history that survives restarts and works across replicas.
 - **ES 7, ES 8 and OpenSearch** — flavor auto-detected per cluster.
 
@@ -241,10 +241,10 @@ Published to GitHub Container Registry on every version tag, built for **`linux/
 docker run -d --name medulla -p 8080:8080 \
   -v /etc/medulla/config.yaml:/etc/medulla/config.yaml:ro \
   -e SESSION_SECRET \
-  ghcr.io/hpoznanski/medulla:0.6.1
+  ghcr.io/hpoznanski/medulla:0.7.0
 ```
 
-Tags are `MAJOR.MINOR.PATCH` and `MAJOR.MINOR` (`0.6.1`, `0.6`). **There is no `latest`** — pin a version deliberately rather than having an image change under you on the next `docker pull`.
+Tags are `MAJOR.MINOR.PATCH` and `MAJOR.MINOR` (`0.7.0`, `0.7`). **There is no `latest`** — pin a version deliberately rather than having an image change under you on the next `docker pull`.
 
 Two consequences of the `FROM scratch` image worth knowing before you deploy it:
 
@@ -254,7 +254,7 @@ Two consequences of the `FROM scratch` image worth knowing before you deploy it:
 Verify what you are running before you trust it:
 
 ```sh
-docker buildx imagetools inspect ghcr.io/hpoznanski/medulla:0.6.1   # both platforms listed
+docker buildx imagetools inspect ghcr.io/hpoznanski/medulla:0.7.0   # both platforms listed
 ```
 
 ## Production deployment (Kubernetes)
@@ -262,7 +262,7 @@ docker buildx imagetools inspect ghcr.io/hpoznanski/medulla:0.6.1   # both platf
 Helm chart in [`deploy/helm/medulla`](deploy/helm/medulla) — hardened defaults (nonroot, read-only rootfs, no capabilities, no SA token), config-checksum rollouts, zone spreading, PDB. See the [chart README](deploy/helm/medulla/README.md) for installation, secret handling, and the security model.
 
 ```sh
-helm install medulla oci://ghcr.io/hpoznanski/charts/medulla --version 0.6.1 -f my-values.yaml
+helm install medulla oci://ghcr.io/hpoznanski/charts/medulla --version 0.7.0 -f my-values.yaml
 ```
 
 ## Operations
@@ -366,8 +366,8 @@ Fixed unless the table says otherwise. All are compile-time constants — delibe
 | Graceful shutdown | 10s | No |
 | Landing page cluster probe | 5s for all clusters, queried in parallel | No |
 | Allocation explains per overview | 8 shards, 4 at a time | No |
-| Shared read cache (health, nodes, shards, stats, routing) | 5s per cluster, per replica; any write through Medulla clears it | No |
-| Auto-refresh (overview, landing page) | off, 10s, 30s or 60s | Per page, `?refresh=` |
+| Shared read cache (health, nodes, shards, stats, routing, index list, `_cat`) | 5s per cluster, per replica; any write through Medulla clears it | No |
+| Auto-refresh (landing, overview, indices, `_cat`) | off, 10s, 30s or 60s | Per page, `?refresh=` |
 | ES response size read | 64 MB | No |
 | REST console history | 20 entries; bodies over 800 bytes stored without the body | No |
 | `_cat` endpoints exposed | 16, allowlisted | No |

@@ -214,3 +214,76 @@ func TestCatPage(t *testing.T) {
 		t.Errorf("bad endpoint = %d, want 404", rec.Code)
 	}
 }
+
+func fakeESManyIndices(t *testing.T) *httptest.Server {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/_cat/indices":
+			w.Write([]byte(`[
+				{"index":"logs-a","health":"green","status":"open","pri":"1","rep":"1","docs.count":"9","store.size":"900kb"},
+				{"index":"logs-b","health":"red","status":"open","pri":"3","rep":"1","docs.count":"100","store.size":"2gb"},
+				{"index":"metrics","health":"yellow","status":"open","pri":"2","rep":"1","docs.count":"10","store.size":"5mb"}]`))
+		case "/_cat/nodes":
+			w.Write([]byte(`[{"name":"n10","heap.percent":"9"},{"name":"n2","heap.percent":"80"},{"name":"n3","heap.percent":"10"}]`))
+		default:
+			w.Write([]byte(`{}`))
+		}
+	}))
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+func order(body string, names ...string) []int {
+	var out []int
+	for _, n := range names {
+		out = append(out, strings.Index(body, n))
+	}
+	return out
+}
+
+func TestIndicesSortAndFilter(t *testing.T) {
+	esrv := fakeESManyIndices(t)
+	s, codec := testServer(t, esrv.URL)
+	root := sessionCookieFor(t, codec, "root", "admin")
+
+	_, body := get(t, s, root, "/c/dev/indices?sort=size")
+	if p := order(body, ">logs-b<", ">metrics<", ">logs-a<"); !(p[0] < p[1] && p[1] < p[2]) {
+		t.Errorf("size desc order wrong: %v", p)
+	}
+	_, body = get(t, s, root, "/c/dev/indices?sort=docs&dir=asc")
+	if p := order(body, ">logs-a<", ">metrics<", ">logs-b<"); !(p[0] < p[1] && p[1] < p[2]) {
+		t.Errorf("docs asc must be numeric (9 < 10 < 100): %v", p)
+	}
+	_, body = get(t, s, root, "/c/dev/indices?health=red")
+	if !strings.Contains(body, ">logs-b<") || strings.Contains(body, ">metrics<") || !strings.Contains(body, "1 of 3") {
+		t.Error("health filter not applied")
+	}
+	_, body = get(t, s, root, "/c/dev/indices?q=LOGS")
+	if strings.Contains(body, ">metrics<") || !strings.Contains(body, `<option value="metrics">`) {
+		t.Error("name filter wrong, or it trimmed the suggestions")
+	}
+}
+
+func TestCatSortAndFilter(t *testing.T) {
+	esrv := fakeESManyIndices(t)
+	s, codec := testServer(t, esrv.URL)
+	root := sessionCookieFor(t, codec, "root", "admin")
+
+	_, body := get(t, s, root, "/c/dev/cat/nodes")
+	if p := order(body, ">n10<", ">n2<", ">n3<"); !(p[0] < p[1] && p[1] < p[2]) {
+		t.Errorf("unsorted must keep ES order: %v", p)
+	}
+	_, body = get(t, s, root, "/c/dev/cat/nodes?sort=heap.percent&dir=desc")
+	if p := order(body, ">n2<", ">n3<", ">n10<"); !(p[0] < p[1] && p[1] < p[2]) {
+		t.Errorf("heap desc must be numeric: %v", p)
+	}
+	_, body = get(t, s, root, "/c/dev/cat/nodes?sort=no-such-column")
+	if p := order(body, ">n10<", ">n2<", ">n3<"); !(p[0] < p[1] && p[1] < p[2]) {
+		t.Errorf("unknown column must be ignored: %v", p)
+	}
+	_, body = get(t, s, root, "/c/dev/cat/nodes?q=80")
+	if !strings.Contains(body, ">n2<") || strings.Contains(body, ">n3<") {
+		t.Error("row filter not applied")
+	}
+}

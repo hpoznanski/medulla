@@ -25,17 +25,14 @@ const maxFilterLen = 100
 type sortSpec struct {
 	def  string
 	keys map[string]bool
-	// health enables the landing page's ?health= filter.
-	health bool
+	// health lists the values ?health= accepts; nil disables the filter.
+	health []string
 }
 
 var nodeSort = &sortSpec{def: "name", keys: map[string]bool{
 	"name": false, "ip": false,
 	"heap": true, "disk": true, "cpu": true, "load": true, "shards": true,
 }}
-
-// healthFilters are the values ?health= accepts on the landing page.
-var healthFilters = []string{"unreachable", "red", "yellow", "green"}
 
 // listView is a page's URL state. Every field is parsed against an
 // allowlist, and every link the page emits is rebuilt from it — never from
@@ -69,7 +66,7 @@ func parseListView(q url.Values, spec *sortSpec) listView {
 	if utf8.RuneCountInString(v.Q) > maxFilterLen {
 		v.Q = string([]rune(v.Q)[:maxFilterLen])
 	}
-	if spec.health && slices.Contains(healthFilters, q.Get("health")) {
+	if slices.Contains(spec.health, q.Get("health")) {
 		v.Health = q.Get("health")
 	}
 	return v
@@ -320,4 +317,59 @@ func humanCount(n int64) string {
 		return strconv.FormatInt(n, 10)
 	}
 	return strings.TrimSuffix(strconv.FormatFloat(v, 'f', 1, 64), ".0") + countUnits[i]
+}
+
+// sizeUnits are the suffixes _cat uses for byte sizes, longest first so
+// "kb" is not read as "b".
+var sizeUnits = []struct {
+	suffix string
+	mult   float64
+}{{"pb", 1 << 50}, {"tb", 1 << 40}, {"gb", 1 << 30}, {"mb", 1 << 20}, {"kb", 1 << 10}, {"b", 1}}
+
+// cellValue reads a table cell as a number when it is one — plain numbers,
+// percentages and _cat byte sizes like "1.2gb" — so they sort by value.
+func cellValue(s string) (float64, bool) {
+	s = strings.TrimSuffix(strings.TrimSpace(strings.ToLower(s)), "%")
+	if f, err := strconv.ParseFloat(s, 64); err == nil {
+		return f, true
+	}
+	for _, u := range sizeUnits {
+		if num, ok := strings.CutSuffix(s, u.suffix); ok {
+			if f, err := strconv.ParseFloat(num, 64); err == nil {
+				return f * u.mult, true
+			}
+			return 0, false
+		}
+	}
+	return 0, false
+}
+
+// compareCells orders two cells numerically when both are numbers or
+// sizes, as text otherwise.
+func compareCells(a, b string) int {
+	fa, okA := cellValue(a)
+	fb, okB := cellValue(b)
+	if okA && okB {
+		return cmp.Compare(fa, fb)
+	}
+	return strings.Compare(a, b)
+}
+
+// sortRows sorts table rows by one cell. Empty cells sort last in either
+// direction; ties keep their original order.
+func sortRows[T any](rows []T, desc bool, cell func(T) string) {
+	slices.SortStableFunc(rows, func(a, b T) int {
+		ca, cb := cell(a), cell(b)
+		if (ca == "") != (cb == "") {
+			if ca == "" {
+				return 1
+			}
+			return -1
+		}
+		c := compareCells(ca, cb)
+		if desc {
+			c = -c
+		}
+		return c
+	})
 }

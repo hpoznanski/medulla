@@ -31,7 +31,7 @@ const (
 	layoutList        = "list"
 )
 
-var clusterSort = &sortSpec{def: "health", health: true, keys: map[string]bool{
+var clusterSort = &sortSpec{def: "health", health: []string{healthUnreachable, "red", "yellow", "green"}, keys: map[string]bool{
 	"health": true, "name": false, "version": false,
 	"nodes": true, "indices": true, "docs": true, "shards": true,
 	"unassigned": true, "relocating": true, "store": true, "latency": true,

@@ -6,10 +6,13 @@
   <title>Medulla — {{.Cluster}} indices</title>
   <link rel="icon" type="image/svg+xml" href="/static/logo.svg">
   <link rel="stylesheet" href="/static/style.css">
+  {{template "metarefresh" .}}
 </head>
 <body>
   {{template "topbar" .}}
   <main>
+    {{$v := .View}}
+    {{template "refreshbar" .}}
     {{if .Error}}<div class="banner error">{{.Error}}</div>{{end}}
     {{if .Notice}}<div class="banner notice">{{.Notice}}</div>{{end}}
 
@@ -25,12 +28,35 @@
     </section>
     {{end}}
 
+    <section class="panel home-toolbar">
+      <nav class="health-summary" aria-label="filter by health">
+        <a href="{{$v.HealthLink ""}}" class="{{if not $v.Health}}active{{end}}" {{if not $v.Health}}aria-current="true"{{end}}><b>{{.Total}}</b> indices</a>
+        {{with index .Counts "red"}}<a href="{{$v.HealthLink "red"}}" class="{{if eq $v.Health "red"}}active{{end}}"><span class="dot red"></span><b>{{.}}</b> red</a>{{end}}
+        {{with index .Counts "yellow"}}<a href="{{$v.HealthLink "yellow"}}" class="{{if eq $v.Health "yellow"}}active{{end}}"><span class="dot yellow"></span><b>{{.}}</b> yellow</a>{{end}}
+        {{with index .Counts "green"}}<a href="{{$v.HealthLink "green"}}" class="{{if eq $v.Health "green"}}active{{end}}"><span class="dot green"></span><b>{{.}}</b> green</a>{{end}}
+      </nav>
+      <form class="home-filter" method="get" action="/c/{{.Cluster}}/indices" role="search">
+        {{if not $v.SortIsDefault}}<input type="hidden" name="sort" value="{{$v.Sort}}"><input type="hidden" name="dir" value="{{$v.Dir}}">{{end}}
+        {{if $v.Refresh}}<input type="hidden" name="refresh" value="{{$v.Refresh}}">{{end}}
+        {{if $v.Health}}<input type="hidden" name="health" value="{{$v.Health}}">{{end}}
+        <input type="search" name="q" value="{{$v.Q}}" list="index-names" maxlength="100"
+               placeholder="filter indices…" aria-label="filter indices by name" autocomplete="off">
+        <datalist id="index-names">{{range .Names}}<option value="{{.}}">{{end}}</datalist>
+        <button type="submit">Filter</button>
+        {{if $v.Q}}<a class="muted" href="{{$v.ClearFilter}}">clear</a>{{end}}
+      </form>
+    </section>
+
     <section class="panel">
-      <h2>Indices ({{len .Indices}})</h2>
+      <h2>Indices ({{len .Indices}}{{if ne (len .Indices) .Total}} of {{.Total}}{{end}})</h2>
+      {{if .Indices}}
       <div class="scroll">
       <table>
         <tr>
-          <th>index</th><th>health</th><th>state</th><th>pri</th><th>rep</th><th>docs</th><th>size</th>
+          {{template "sortth" ($v.Header "index" "index")}}{{template "sortth" ($v.Header "health" "health")}}
+          {{template "sortth" ($v.Header "status" "state")}}{{template "sortth" ($v.Header "pri" "pri")}}
+          {{template "sortth" ($v.Header "rep" "rep")}}{{template "sortth" ($v.Header "docs" "docs")}}
+          {{template "sortth" ($v.Header "size" "size")}}
           {{if .CanWrite}}<th>actions</th>{{end}}
         </tr>
         {{$c := .Cluster}}{{$w := .CanWrite}}
@@ -60,6 +86,10 @@
         {{end}}
       </table>
       </div>
+      {{else}}
+      <p class="muted">No indices match{{if $v.Q}} <code>{{$v.Q}}</code>{{end}}{{if $v.Health}} with health <code>{{$v.Health}}</code>{{end}}.
+        <a href="/c/{{.Cluster}}/indices">Show all</a></p>
+      {{end}}
     </section>
   </main>
 </body>

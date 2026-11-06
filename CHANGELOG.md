@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.0] - 2026-11-06
+
+### Added
+
+- Indices page: sortable columns (index, health, state, pri, rep, docs, size —
+  numbers and sizes compared by value, so `9 < 10 < 100` and `900kb < 2gb`),
+  a health summary that doubles as a `?health=` filter, a name filter with
+  native `<datalist>` suggestions (capped at 1,000 names), and opt-in
+  auto-refresh.
+- `_cat` browser: sort on any column the endpoint returns, a row filter
+  across all cells, and auto-refresh. Rows keep ES's order until a column is
+  chosen; the sortable columns are allowlisted per response, so an unknown
+  `?sort=` is ignored. The README's "sortable tables" is now true.
+- Empty cells sort last in either direction on both pages.
+- Injection tests extended to the indices and `_cat` pages.
+
+### Changed
+
+- The index list and `_cat` reads go through the shared 5-second cache;
+  creating, deleting or changing an index through Medulla clears it, so the
+  list after the action shows the result.
+
 ## [0.6.1] - 2026-11-06
 
 ### Changed

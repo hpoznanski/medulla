@@ -6,10 +6,13 @@
   <title>Medulla — _cat/{{.Endpoint}}</title>
   <link rel="icon" type="image/svg+xml" href="/static/logo.svg">
   <link rel="stylesheet" href="/static/style.css">
+  {{template "metarefresh" .}}
 </head>
 <body>
   {{template "topbar" .}}
   <main>
+    {{$v := .View}}
+    {{template "refreshbar" .}}
     <nav class="cat-endpoints panel">
       {{$c := .Cluster}}{{$cur := .Endpoint}}
       {{range .Endpoints}}
@@ -21,13 +24,21 @@
 
     {{if .Result}}
     <section class="panel">
-      <h2>_cat/{{.Endpoint}} ({{len .Result.Rows}})</h2>
+      <h2>_cat/{{.Endpoint}} ({{len .Shown}}{{if ne (len .Shown) (len .Result.Rows)}} of {{len .Result.Rows}}{{end}})</h2>
       {{if .Result.Rows}}
+      <form class="home-filter" method="get" action="/c/{{.Cluster}}/cat/{{.Endpoint}}" role="search">
+        {{if not $v.SortIsDefault}}<input type="hidden" name="sort" value="{{$v.Sort}}"><input type="hidden" name="dir" value="{{$v.Dir}}">{{end}}
+        {{if $v.Refresh}}<input type="hidden" name="refresh" value="{{$v.Refresh}}">{{end}}
+        <input type="search" name="q" value="{{$v.Q}}" maxlength="100"
+               placeholder="filter rows…" aria-label="filter rows" autocomplete="off">
+        <button type="submit">Filter</button>
+        {{if $v.Q}}<a class="muted" href="{{$v.ClearFilter}}">clear</a>{{end}}
+      </form>
       <div class="scroll">
       <table>
-        <tr>{{range .Result.Columns}}<th>{{.}}</th>{{end}}</tr>
+        <tr>{{range .Result.Columns}}{{template "sortth" ($v.Header . .)}}{{end}}</tr>
         {{$cols := .Result.Columns}}
-        {{range .Result.Rows}}
+        {{range .Shown}}
           {{$row := .}}
           <tr>{{range $cols}}<td>{{index $row .}}</td>{{end}}</tr>
         {{end}}
