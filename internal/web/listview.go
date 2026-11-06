@@ -30,7 +30,7 @@ type sortSpec struct {
 }
 
 var nodeSort = &sortSpec{def: "name", keys: map[string]bool{
-	"name": false, "ip": false,
+	"name": false, "ip": false, "version": false,
 	"heap": true, "disk": true, "cpu": true, "load": true, "shards": true,
 }}
 
@@ -162,6 +162,8 @@ func sortNodes(nodes []es.NodeInfo, v listView, shards map[string]int) {
 		switch v.Sort {
 		case "ip":
 			c = compareIP(a.IP, b.IP)
+		case "version":
+			c = compareVersion(a.Version, b.Version)
 		case "heap":
 			c = cmp.Compare(a.HeapPercent, b.HeapPercent)
 		case "disk":
@@ -372,4 +374,27 @@ func sortRows[T any](rows []T, desc bool, cell func(T) string) {
 		}
 		return c
 	})
+}
+
+type versionCount struct {
+	Version string
+	Nodes   int
+}
+
+// nodeVersions counts nodes per version, newest first. More than one entry
+// means a mixed-version cluster — normal mid rolling upgrade, a problem if
+// it lingers, since shards on newer nodes cannot be replicated to older ones.
+func nodeVersions(nodes []es.NodeInfo) []versionCount {
+	counts := map[string]int{}
+	for _, n := range nodes {
+		if n.Version != "" {
+			counts[n.Version]++
+		}
+	}
+	out := make([]versionCount, 0, len(counts))
+	for v, n := range counts {
+		out = append(out, versionCount{v, n})
+	}
+	slices.SortFunc(out, func(a, b versionCount) int { return compareVersion(b.Version, a.Version) })
+	return out
 }

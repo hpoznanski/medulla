@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.0] - 2026-11-06
+
+### Added
+
+- Nodes table: per-node `version` column, sortable numerically (`8.9`
+  before `8.19`), for tracking a rolling upgrade or migration node by node.
+- Mixed-version clusters are called out: a banner counts nodes per version
+  (`9.2.1 × 2 · 8.19.7 × 1`), nodes older than the newest are highlighted
+  (with screen-reader text), and the Version stat shows the spread
+  (`8.19.7 → 9.2.1`) instead of whichever node answered the request.
+  Verified against a real 8.19.7 + 9.2.1 cluster.
+- `scripts/compat.sh` checks the version column on every supported version.
+
 ## [0.8.0] - 2026-11-06
 
 Release candidate for 1.0.0: no new features, everything here hardens what

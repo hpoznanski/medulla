@@ -191,3 +191,77 @@ func TestSortRowsByValue(t *testing.T) {
 		t.Errorf("numbers asc = %v, want %v", nums, want)
 	}
 }
+
+func TestNodeVersions(t *testing.T) {
+	nodes := []es.NodeInfo{
+		{Name: "a", Version: "8.19.7"}, {Name: "b", Version: "9.2.1"},
+		{Name: "c", Version: "9.2.1"}, {Name: "d", Version: "8.9.0"}, {Name: "e"},
+	}
+	got := nodeVersions(nodes)
+	want := []versionCount{{"9.2.1", 2}, {"8.19.7", 1}, {"8.9.0", 1}}
+	if !slices.Equal(got, want) {
+		t.Errorf("nodeVersions = %v, want %v (newest first, numeric)", got, want)
+	}
+
+	sortNodes(nodes, listView{Sort: "version"}, nil)
+	var order []string
+	for _, n := range nodes {
+		order = append(order, n.Name)
+	}
+	if want := []string{"e", "d", "a", "b", "c"}; !slices.Equal(order, want) {
+		t.Errorf("version asc = %v, want %v (8.9 before 8.19)", order, want)
+	}
+}
+
+func TestOverviewMixedVersions(t *testing.T) {
+	nodesJSON := `[{"name":"es01","version":"9.2.1"},{"name":"es02","version":"8.19.7"},{"name":"es03","version":"9.2.1"}]`
+	esrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/_cluster/health":
+			w.Write([]byte(`{"status":"green","number_of_nodes":3}`))
+		case "/_cat/nodes":
+			w.Write([]byte(nodesJSON))
+		default:
+			w.Write([]byte(`[]`))
+		}
+	}))
+	t.Cleanup(esrv.Close)
+	s, codec := testServer(t, esrv.URL)
+	root := sessionCookieFor(t, codec, "root", "admin")
+
+	_, body := get(t, s, root, "/c/dev/overview")
+	if !strings.Contains(body, "Mixed versions:") || !strings.Contains(body, "<code>9.2.1</code> × 2") {
+		t.Error("mixed-version banner missing or miscounted")
+	}
+	if !strings.Contains(body, `<td class="warn-text">8.19.7<span class="sr-only">, older than 9.2.1</span></td>`) {
+		t.Error("older node not flagged")
+	}
+	if strings.Contains(body, `<td class="warn-text">9.2.1`) {
+		t.Error("newest node flagged as older")
+	}
+	if !strings.Contains(body, `<span class="v warn-text">8.19.7 → 9.2.1</span>`) {
+		t.Error("version stat shows one node's version instead of the spread")
+	}
+}
+
+func TestOverviewUniformVersionNoBanner(t *testing.T) {
+	esrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/_cluster/health":
+			w.Write([]byte(`{"status":"green","number_of_nodes":2}`))
+		case "/_cat/nodes":
+			w.Write([]byte(`[{"name":"es01","version":"9.2.1"},{"name":"es02","version":"9.2.1"}]`))
+		default:
+			w.Write([]byte(`[]`))
+		}
+	}))
+	t.Cleanup(esrv.Close)
+	s, codec := testServer(t, esrv.URL)
+	_, body := get(t, s, sessionCookieFor(t, codec, "root", "admin"), "/c/dev/overview")
+	if strings.Contains(body, "Mixed versions") || strings.Contains(body, "warn-text\">9.2.1") {
+		t.Error("uniform cluster shows a mixed-version warning")
+	}
+	if !strings.Contains(body, "<td class=\"\">9.2.1</td>") {
+		t.Error("version column missing")
+	}
+}

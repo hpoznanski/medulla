@@ -45,6 +45,7 @@ type NodeInfo struct {
 	DiskPercent int
 	CPUPercent  int
 	Load        string
+	Version     string
 }
 
 type ShardInfo struct {
@@ -75,8 +76,9 @@ func (c *Client) Overview(ctx context.Context) (*Overview, error) {
 		DiskUsedPct string `json:"disk.used_percent"`
 		CPU         string `json:"cpu"`
 		Load1m      string `json:"load_1m"`
+		Version     string `json:"version"`
 	}
-	nodeCols := "name,ip,node.role,master,heap.percent,disk.used_percent,cpu,load_1m"
+	nodeCols := "name,ip,node.role,master,heap.percent,disk.used_percent,cpu,load_1m,version"
 	if err := c.GetJSONCached(ctx, "/_cat/nodes?format=json&h="+nodeCols, &cat); err != nil {
 		return nil, err
 	}
@@ -90,6 +92,7 @@ func (c *Client) Overview(ctx context.Context) (*Overview, error) {
 			DiskPercent: atoi(n.DiskUsedPct),
 			CPUPercent:  atoi(n.CPU),
 			Load:        n.Load1m,
+			Version:     n.Version,
 		})
 	}
 	sort.Slice(o.Nodes, func(i, j int) bool { return o.Nodes[i].Name < o.Nodes[j].Name })

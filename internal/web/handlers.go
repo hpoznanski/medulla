@@ -90,6 +90,7 @@ type overviewData struct {
 	CanCluster bool
 	Notice     string
 	View       listView
+	Versions   []versionCount // per node version, newest first
 	Updated    string
 
 	AllocationValues []string
@@ -152,6 +153,7 @@ func (s *Server) handleOverview(w http.ResponseWriter, r *http.Request) {
 		Overview:   overview,
 		Info:       info,
 		Matrix:     buildMatrix(overview.Nodes, overview.Shards, view.Q),
+		Versions:   nodeVersions(overview.Nodes),
 		Explains:   explains,
 		ExplainCap: capped,
 		Routing:    routing,

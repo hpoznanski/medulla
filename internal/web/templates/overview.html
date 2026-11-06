@@ -34,7 +34,13 @@
     {{end}}{{end}}
     <section class="stats">
       <div class="stat"><span class="k">Health</span><span class="v health-{{.Overview.Health.Status}}">{{.Overview.Health.Status}}</span></div>
+      {{if gt (len .Versions) 1}}
+      {{/* Mid rolling upgrade "/" answers with whichever node took the
+           request, so show the spread instead of one node's version. */}}
+      <div class="stat"><span class="k">Version</span><span class="v warn-text">{{(index .Versions (sub1 (len .Versions))).Version}} → {{(index .Versions 0).Version}}</span></div>
+      {{else}}
       <div class="stat"><span class="k">Version</span><span class="v">{{.Info.Flavor}} {{.Info.Version}}</span></div>
+      {{end}}
       <div class="stat"><span class="k">Nodes</span><span class="v">{{.Overview.Health.NumberOfNodes}}</span></div>
       <div class="stat"><span class="k">Active shards</span><span class="v">{{.Overview.Health.ActiveShards}}</span></div>
       <div class="stat"><span class="k">Relocating</span><span class="v">{{.Overview.Health.RelocatingShards}}</span></div>
@@ -49,13 +55,21 @@
 
     <section class="panel">
       <h2>Nodes</h2>
+      {{$newest := ""}}{{$mixed := gt (len .Versions) 1}}{{with .Versions}}{{$newest = (index . 0).Version}}{{end}}
+      {{if $mixed}}
+      <div class="banner notice" role="status">
+        <b>Mixed versions:</b>
+        {{range $i, $vc := .Versions}}{{if $i}} · {{end}}<code>{{$vc.Version}}</code> × {{$vc.Nodes}}{{end}}.
+        Normal during a rolling upgrade. Until every node is on <code>{{$newest}}</code>, shards on newer nodes cannot be replicated to older ones.
+      </div>
+      {{end}}
       <div class="scroll">
       <table>
         {{/* Only worth a column when there are controls to offer or a node is
              actually excluded — otherwise viewers get an empty column. */}}
         {{$showAlloc := and (not .Routing.Unknown) (or .CanCluster .Routing.ExcludedNodes)}}
         <tr>
-          {{template "sortth" ($v.Header "name" "node")}}{{template "sortth" ($v.Header "ip" "ip")}}<th>roles</th>
+          {{template "sortth" ($v.Header "name" "node")}}{{template "sortth" ($v.Header "ip" "ip")}}{{template "sortth" ($v.Header "version" "version")}}<th>roles</th>
           {{template "sortth" ($v.Header "heap" "heap")}}{{template "sortth" ($v.Header "disk" "disk")}}
           {{template "sortth" ($v.Header "cpu" "cpu")}}{{template "sortth" ($v.Header "load" "load")}}
           {{template "sortth" ($v.Header "shards" "shards")}}{{if $showAlloc}}<th>allocation</th>{{end}}
@@ -65,6 +79,7 @@
         <tr>
           <td>{{.Name}}{{if .Master}} ★{{end}}</td>
           <td>{{.IP}}</td>
+          <td class="{{if and $mixed (ne .Version $newest)}}warn-text{{end}}">{{.Version}}{{if and $mixed (ne .Version $newest)}}<span class="sr-only">, older than {{$newest}}</span>{{end}}</td>
           <td>{{range .Roles}}{{.}} {{end}}</td>
           <td><meter min="0" max="100" high="80" value="{{.HeapPercent}}"></meter> {{.HeapPercent}}%</td>
           <td><meter min="0" max="100" high="85" value="{{.DiskPercent}}"></meter> {{.DiskPercent}}%</td>

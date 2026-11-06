@@ -18,7 +18,7 @@ Medulla is the brain stem: small, always on, controls the vital functions.
 ## Features
 
 - **Clusters landing page** — every cluster at a glance as cards or a sortable list: health, version/flavor, nodes, indices, docs, shards, unassigned/relocating, store size, response time. Problems first, a health summary that filters, a name filter with native suggestions, opt-in auto-refresh; unreachable clusters show the classified cause (timeout, refused, dns, tls, auth). Cluster switcher on every page.
-- **Overview** — cluster totals (indices, docs, store size), a sortable node table (heap/disk/CPU/load/shards), an index × node shard allocation matrix with an index filter and per-shard hover details, opt-in auto-refresh, and an *allocation explain* panel that shows the actual root cause for every unassigned shard (deciders parsed, grouped by cause).
+- **Overview** — cluster totals (indices, docs, store size), a sortable node table (version/heap/disk/CPU/load/shards) that flags a mixed-version cluster mid rolling upgrade and highlights the nodes not yet upgraded, an index × node shard allocation matrix with an index filter and per-shard hover details, opt-in auto-refresh, and an *allocation explain* panel that shows the actual root cause for every unassigned shard (deciders parsed, grouped by cause).
 - **Shard routing** — drain a single node with one click (type-name-to-confirm), showing live progress until it reports *drained — safe to stop*; cluster-wide `allocation.enable` / `rebalance.enable` switches, with a standing warning while any restriction is in place.
 - **Index management** — sortable index list (health, state, shards, docs, size by value) with a health summary that filters, a name filter with suggestions and opt-in auto-refresh; create, delete (type-name-to-confirm), open/close, refresh, flush, force-merge; settings/mappings/aliases detail view; edit or reset any dynamic index setting, with ES defaults shown alongside what is explicitly set.
 - **Aliases** — list, add, remove.
@@ -242,10 +242,10 @@ Published to GitHub Container Registry on every version tag, built for **`linux/
 docker run -d --name medulla -p 8080:8080 \
   -v /etc/medulla/config.yaml:/etc/medulla/config.yaml:ro \
   -e SESSION_SECRET \
-  ghcr.io/hpoznanski/medulla:0.8.0
+  ghcr.io/hpoznanski/medulla:0.9.0
 ```
 
-Tags are `MAJOR.MINOR.PATCH` and `MAJOR.MINOR` (`0.8.0`, `0.8`). **There is no `latest`** — pin a version deliberately rather than having an image change under you on the next `docker pull`.
+Tags are `MAJOR.MINOR.PATCH` and `MAJOR.MINOR` (`0.9.0`, `0.9`). **There is no `latest`** — pin a version deliberately rather than having an image change under you on the next `docker pull`.
 
 Two consequences of the `FROM scratch` image worth knowing before you deploy it:
 
@@ -258,19 +258,19 @@ Use **cosign v3 or later**: releases are signed in the new Sigstore bundle forma
 
 ```sh
 # signature: built by this repo's CI from a version tag, nothing else
-cosign verify ghcr.io/hpoznanski/medulla:0.8.0 \
+cosign verify ghcr.io/hpoznanski/medulla:0.9.0 \
   --certificate-identity-regexp '^https://github.com/hpoznanski/medulla/\.github/workflows/ci\.yml@refs/tags/v' \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com
 
 # same for the chart
-cosign verify ghcr.io/hpoznanski/charts/medulla:0.8.0 \
+cosign verify ghcr.io/hpoznanski/charts/medulla:0.9.0 \
   --certificate-identity-regexp '^https://github.com/hpoznanski/medulla/\.github/workflows/ci\.yml@refs/tags/v' \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com
 
 # platforms, SBOM and provenance
-docker buildx imagetools inspect ghcr.io/hpoznanski/medulla:0.8.0
-docker buildx imagetools inspect ghcr.io/hpoznanski/medulla:0.8.0 --format '{{ json .SBOM }}'
-docker buildx imagetools inspect ghcr.io/hpoznanski/medulla:0.8.0 --format '{{ json .Provenance }}'
+docker buildx imagetools inspect ghcr.io/hpoznanski/medulla:0.9.0
+docker buildx imagetools inspect ghcr.io/hpoznanski/medulla:0.9.0 --format '{{ json .SBOM }}'
+docker buildx imagetools inspect ghcr.io/hpoznanski/medulla:0.9.0 --format '{{ json .Provenance }}'
 ```
 
 ## Production deployment (Kubernetes)
@@ -278,7 +278,7 @@ docker buildx imagetools inspect ghcr.io/hpoznanski/medulla:0.8.0 --format '{{ j
 Helm chart in [`deploy/helm/medulla`](deploy/helm/medulla) — hardened defaults (nonroot, read-only rootfs, no capabilities, no SA token), config-checksum rollouts, zone spreading, PDB. See the [chart README](deploy/helm/medulla/README.md) for installation, secret handling, and the security model.
 
 ```sh
-helm install medulla oci://ghcr.io/hpoznanski/charts/medulla --version 0.8.0 -f my-values.yaml
+helm install medulla oci://ghcr.io/hpoznanski/charts/medulla --version 0.9.0 -f my-values.yaml
 ```
 
 ## Operations

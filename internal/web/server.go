@@ -83,7 +83,7 @@ func NewServer(
 	clusters *es.Registry,
 	logger *slog.Logger,
 ) (*Server, error) {
-	tmpl, err := template.New("").Funcs(template.FuncMap{"count": humanCount}).ParseFS(assets, "templates/*.html")
+	tmpl, err := template.New("").Funcs(template.FuncMap{"count": humanCount, "sub1": func(n int) int { return n - 1 }}).ParseFS(assets, "templates/*.html")
 	if err != nil {
 		return nil, err
 	}

@@ -27,6 +27,11 @@ check "reader login" 303 -c $R -d 'username=reader&password=readerpw' $M/login
 ## flavor and version detected
 has "flavor is $FLAVOR" "$C/overview" "<span class=\"v\">$FLAVOR "
 
+## per-node version column (rolling-upgrade visibility) on this version too
+V=$(curl -s "$ES/" | grep -o '"number" *: *"[^"]*"' | head -1 | sed 's/.*"\([^"]*\)"$/\1/')
+has "node version column shows $V" "$C/overview?sort=version" "<td class=\"\">$V</td>"
+hasnt "single version: no mixed banner" "$C/overview" 'Mixed versions'
+
 ## every read page, including sorted/filtered variants
 for p in "" "?layout=list" "?layout=list&sort=docs" "?health=unreachable" "?q=comp" "?refresh=10"; do
   check "GET /$p" 200 -b $W "$M/$p"
