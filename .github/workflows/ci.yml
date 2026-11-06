@@ -24,9 +24,11 @@ jobs:
       - run: go vet ./...
       - run: go test -race -cover ./...
       - run: go build ./cmd/medulla
+      # Tool pinned like the Actions above; the vulnerability database it
+      # queries is always current regardless of the tool version.
       - name: govulncheck
         run: |
-          go install golang.org/x/vuln/cmd/govulncheck@latest
+          go install golang.org/x/vuln/cmd/govulncheck@v1.9.0
           govulncheck ./...
       - name: helm lint and render tests
         run: |
