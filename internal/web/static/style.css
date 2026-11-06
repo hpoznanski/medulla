@@ -75,6 +75,8 @@ table.shardgrid { width: auto; min-width: 100%; }
 .shard.r { background: var(--replica-bg); color: var(--accent); }
 .shard.u { border-color: var(--crit); border-style: dashed; color: var(--crit); }
 .shard.relo { border-color: var(--warn); color: var(--warn); }
+/* the copy being built on a relocation target or recovering replica */
+.shard.init { border-color: var(--warn); border-style: dashed; color: var(--warn); }
 .legend { color: var(--muted); font-size: .75rem; display: flex; gap: 1rem; align-items: center; }
 
 .banner.error {

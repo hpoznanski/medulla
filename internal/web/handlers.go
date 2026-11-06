@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/hpoznanski/medulla/internal/auth"
@@ -199,9 +200,13 @@ func (s *Server) handleNodeExclude(w http.ResponseWriter, r *http.Request) {
 	s.redirectNotice(w, r, "/c/"+cluster+"/overview", action, err)
 }
 
-// maxExplains bounds allocation-explain calls per overview render.
-// ponytail: 8 sequential calls worst case; batch endpoint doesn't exist.
-const maxExplains = 8
+// maxExplains bounds allocation-explain calls per overview render, and
+// explainWorkers how many run at once: worst case is two rounds of the ES
+// timeout instead of eight. ES has no batch explain endpoint.
+const (
+	maxExplains    = 8
+	explainWorkers = 4
+)
 
 // explainUnassigned runs allocation-explain for each unassigned shard (up to
 // maxExplains) and groups shards that share the same root cause. Returns the
@@ -223,9 +228,16 @@ func (s *Server) explainUnassigned(ctx context.Context, client *es.Client, shard
 		unassigned = unassigned[:maxExplains]
 	}
 
-	byCause := map[string]*explainGroup{}
-	var order []string
-	for _, sh := range unassigned {
+	// Explains run concurrently, at most explainWorkers at once, each into
+	// its own slot so grouping below keeps shard order.
+	type result struct {
+		label string
+		ex    *es.AllocationExplain
+	}
+	results := make([]result, len(unassigned))
+	sem := make(chan struct{}, explainWorkers)
+	var wg sync.WaitGroup
+	for i, sh := range unassigned {
 		shardNum, err := strconv.Atoi(sh.Shard)
 		if err != nil {
 			continue
@@ -235,19 +247,32 @@ func (s *Server) explainUnassigned(ctx context.Context, client *es.Client, shard
 			kind = "primary"
 		}
 		label := fmt.Sprintf("%s[%s] %s", sh.Index, sh.Shard, kind)
+		wg.Go(func() {
+			sem <- struct{}{}
+			defer func() { <-sem }()
+			ex, err := client.AllocationExplainFor(ctx, sh.Index, shardNum, sh.PriRep == "p")
+			if err != nil {
+				s.logger.Warn("allocation explain failed", "shard", label, "err", err)
+				return
+			}
+			results[i] = result{label, ex}
+		})
+	}
+	wg.Wait()
 
-		ex, err := client.AllocationExplainFor(ctx, sh.Index, shardNum, sh.PriRep == "p")
-		if err != nil {
-			s.logger.Warn("allocation explain failed", "shard", label, "err", err)
+	byCause := map[string]*explainGroup{}
+	var order []string
+	for _, r := range results {
+		if r.ex == nil {
 			continue
 		}
-		g, ok := byCause[ex.Explanation]
+		g, ok := byCause[r.ex.Explanation]
 		if !ok {
-			g = &explainGroup{Explanation: ex.Explanation, RawJSON: ex.RawJSON}
-			byCause[ex.Explanation] = g
-			order = append(order, ex.Explanation)
+			g = &explainGroup{Explanation: r.ex.Explanation, RawJSON: r.ex.RawJSON}
+			byCause[r.ex.Explanation] = g
+			order = append(order, r.ex.Explanation)
 		}
-		g.Shards = append(g.Shards, label)
+		g.Shards = append(g.Shards, r.label)
 	}
 
 	out := make([]explainGroup, 0, len(order))

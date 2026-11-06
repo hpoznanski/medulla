@@ -241,10 +241,10 @@ Published to GitHub Container Registry on every version tag, built for **`linux/
 docker run -d --name medulla -p 8080:8080 \
   -v /etc/medulla/config.yaml:/etc/medulla/config.yaml:ro \
   -e SESSION_SECRET \
-  ghcr.io/hpoznanski/medulla:0.6.0
+  ghcr.io/hpoznanski/medulla:0.6.1
 ```
 
-Tags are `MAJOR.MINOR.PATCH` and `MAJOR.MINOR` (`0.6.0`, `0.6`). **There is no `latest`** — pin a version deliberately rather than having an image change under you on the next `docker pull`.
+Tags are `MAJOR.MINOR.PATCH` and `MAJOR.MINOR` (`0.6.1`, `0.6`). **There is no `latest`** — pin a version deliberately rather than having an image change under you on the next `docker pull`.
 
 Two consequences of the `FROM scratch` image worth knowing before you deploy it:
 
@@ -254,7 +254,7 @@ Two consequences of the `FROM scratch` image worth knowing before you deploy it:
 Verify what you are running before you trust it:
 
 ```sh
-docker buildx imagetools inspect ghcr.io/hpoznanski/medulla:0.6.0   # both platforms listed
+docker buildx imagetools inspect ghcr.io/hpoznanski/medulla:0.6.1   # both platforms listed
 ```
 
 ## Production deployment (Kubernetes)
@@ -262,7 +262,7 @@ docker buildx imagetools inspect ghcr.io/hpoznanski/medulla:0.6.0   # both platf
 Helm chart in [`deploy/helm/medulla`](deploy/helm/medulla) — hardened defaults (nonroot, read-only rootfs, no capabilities, no SA token), config-checksum rollouts, zone spreading, PDB. See the [chart README](deploy/helm/medulla/README.md) for installation, secret handling, and the security model.
 
 ```sh
-helm install medulla oci://ghcr.io/hpoznanski/charts/medulla --version 0.6.0 -f my-values.yaml
+helm install medulla oci://ghcr.io/hpoznanski/charts/medulla --version 0.6.1 -f my-values.yaml
 ```
 
 ## Operations
@@ -297,7 +297,7 @@ POST /_cluster/allocation/explain
 
 The overview's *Unassigned shards — why?* panel runs `_cluster/allocation/explain` per shard, parses the deciders, and groups shards sharing a root cause — the actual reason, not the boilerplate `allocate_explanation`.
 
-It explains **at most 8 shards per page load**; beyond that it prints "…and N more unassigned shards not analyzed (limit)". The cap is fixed, and it exists because the calls are sequential and each one can be slow on an unhealthy cluster. Where a whole index is unassigned the grouping usually means one explanation covers all of it anyway; for a wider sweep, use the console.
+It explains **at most 8 shards per page load**; beyond that it prints "…and N more unassigned shards not analyzed (limit)". The cap is fixed, and it exists because each call can be slow on an unhealthy cluster; up to 4 run at once. Where a whole index is unassigned the grouping usually means one explanation covers all of it anyway; for a wider sweep, use the console.
 
 ### Rotating the session secret
 
@@ -365,7 +365,8 @@ Fixed unless the table says otherwise. All are compile-time constants — delibe
 | HTTP server timeouts | 5s header, 30s read, 60s write, 120s idle | No |
 | Graceful shutdown | 10s | No |
 | Landing page cluster probe | 5s for all clusters, queried in parallel | No |
-| Allocation explains per overview | 8 shards | No |
+| Allocation explains per overview | 8 shards, 4 at a time | No |
+| Shared read cache (health, nodes, shards, stats, routing) | 5s per cluster, per replica; any write through Medulla clears it | No |
 | Auto-refresh (overview, landing page) | off, 10s, 30s or 60s | Per page, `?refresh=` |
 | ES response size read | 64 MB | No |
 | REST console history | 20 entries; bodies over 800 bytes stored without the body | No |

@@ -162,3 +162,14 @@ func TestOverviewRefreshAndFilterRender(t *testing.T) {
 		t.Error("filter value reflected unescaped")
 	}
 }
+
+func TestHumanCount(t *testing.T) {
+	for n, want := range map[int64]string{
+		0: "0", 999: "999", 1000: "1k", 1260: "1.3k", 999_949: "999.9k",
+		999_950: "1M", 12_345_678: "12.3M", 3_000_000_000: "3B",
+	} {
+		if got := humanCount(n); got != want {
+			t.Errorf("humanCount(%d) = %q, want %q", n, got, want)
+		}
+	}
+}

@@ -162,13 +162,12 @@ func (s *Server) homeLayout(w http.ResponseWriter, r *http.Request) string {
 // failure there marks the cluster partial instead of hiding what we have).
 func probeCluster(ctx context.Context, client *es.Client) clusterStatus {
 	var st clusterStatus
-	start := time.Now()
-	resp, err := client.Do(ctx, http.MethodGet, "/_cluster/health", nil)
-	st.LatencyMS = time.Since(start).Milliseconds()
+	resp, err := client.GetCached(ctx, "/_cluster/health")
 	if err != nil {
 		st.Health, st.Reason, st.Error = healthUnreachable, unreachableReason(err), err.Error()
 		return st
 	}
+	st.LatencyMS = resp.Took.Milliseconds()
 	if !resp.OK() {
 		st.Health, st.Reason = healthUnreachable, httpReason(resp.Status)
 		st.Error = "/_cluster/health: " + resp.ErrorReason()
@@ -198,7 +197,7 @@ func probeCluster(ctx context.Context, client *es.Client) clusterStatus {
 			} `json:"store"`
 		} `json:"indices"`
 	}
-	if err := client.GetJSON(ctx, "/_cluster/stats", &stats); err != nil {
+	if err := client.GetJSONCached(ctx, "/_cluster/stats", &stats); err != nil {
 		partial = append(partial, err.Error())
 	} else {
 		st.HasStats = true

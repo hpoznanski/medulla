@@ -305,3 +305,19 @@ func buildMatrix(nodes []es.NodeInfo, shards []es.ShardInfo, filter string) shar
 	}
 	return m
 }
+
+var countUnits = []string{"", "k", "M", "B", "T"}
+
+// humanCount renders a large count for reading at a glance — 12345678 as
+// 12.3M. Templates pair it with the exact figure in a title tooltip.
+func humanCount(n int64) string {
+	v, i := float64(n), 0
+	for (v >= 999.95 || v <= -999.95) && i < len(countUnits)-1 {
+		v /= 1000
+		i++
+	}
+	if i == 0 {
+		return strconv.FormatInt(n, 10)
+	}
+	return strings.TrimSuffix(strconv.FormatFloat(v, 'f', 1, 64), ".0") + countUnits[i]
+}

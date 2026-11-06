@@ -1,6 +1,6 @@
 {{define "topbar"}}
 <header class="topbar">
-  <span class="brand"><span class="accent">◉</span> Medulla</span>
+  <a class="brand" href="/"><span class="accent">◉</span> Medulla</a>
   {{$current := .Cluster}}{{$nav := .Nav}}
   <details class="cluster-switcher">
     <summary><span class="dot"></span>{{.Cluster}} ▾</summary>

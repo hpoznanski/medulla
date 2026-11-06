@@ -62,7 +62,7 @@ type ShardInfo struct {
 
 func (c *Client) Overview(ctx context.Context) (*Overview, error) {
 	var o Overview
-	if err := c.GetJSON(ctx, "/_cluster/health", &o.Health); err != nil {
+	if err := c.GetJSONCached(ctx, "/_cluster/health", &o.Health); err != nil {
 		return nil, err
 	}
 
@@ -77,7 +77,7 @@ func (c *Client) Overview(ctx context.Context) (*Overview, error) {
 		Load1m      string `json:"load_1m"`
 	}
 	nodeCols := "name,ip,node.role,master,heap.percent,disk.used_percent,cpu,load_1m"
-	if err := c.GetJSON(ctx, "/_cat/nodes?format=json&h="+nodeCols, &cat); err != nil {
+	if err := c.GetJSONCached(ctx, "/_cat/nodes?format=json&h="+nodeCols, &cat); err != nil {
 		return nil, err
 	}
 	for _, n := range cat {
@@ -95,7 +95,7 @@ func (c *Client) Overview(ctx context.Context) (*Overview, error) {
 	sort.Slice(o.Nodes, func(i, j int) bool { return o.Nodes[i].Name < o.Nodes[j].Name })
 
 	shardCols := "index,shard,prirep,state,node,docs,store,unassigned.reason,unassigned.details,unassigned.at"
-	if err := c.GetJSON(ctx, "/_cat/shards?format=json&h="+shardCols, &o.Shards); err != nil {
+	if err := c.GetJSONCached(ctx, "/_cat/shards?format=json&h="+shardCols, &o.Shards); err != nil {
 		return nil, err
 	}
 
@@ -113,7 +113,7 @@ func (c *Client) Overview(ctx context.Context) (*Overview, error) {
 			} `json:"store"`
 		} `json:"indices"`
 	}
-	if err := c.GetJSON(ctx, "/_cluster/stats", &stats); err == nil {
+	if err := c.GetJSONCached(ctx, "/_cluster/stats", &stats); err == nil {
 		o.Totals = Totals{
 			OK:        true,
 			Indices:   stats.Indices.Count,

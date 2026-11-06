@@ -113,10 +113,17 @@ func TestProbeClusterReasons(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond)
 	defer cancel()
+	// The cached fetch is detached from the caller and outlives it, so the
+	// handler must be released explicitly before the server can close.
+	stop := make(chan struct{})
 	slow := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		<-r.Context().Done()
+		select {
+		case <-r.Context().Done():
+		case <-stop:
+		}
 	}))
 	t.Cleanup(slow.Close)
+	t.Cleanup(func() { close(stop) })
 	if st := probeCluster(ctx, esClientFor(t, slow.URL)); st.Reason != "timeout" {
 		t.Errorf("slow cluster reason = %q, want timeout", st.Reason)
 	}

@@ -385,7 +385,7 @@ func (c *Client) Routing(ctx context.Context) (*Routing, error) {
 		Transient  routingBlock `json:"transient"`
 		Defaults   routingBlock `json:"defaults"`
 	}
-	if err := c.GetJSON(ctx, routingPath, &raw); err != nil {
+	if err := c.GetJSONCached(ctx, routingPath, &raw); err != nil {
 		return nil, err
 	}
 	// Precedence is the one ES applies: transient beats persistent beats default.

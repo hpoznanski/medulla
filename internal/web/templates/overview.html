@@ -41,8 +41,8 @@
       <div class="stat"><span class="k">Unassigned</span><span class="v {{if .Overview.Health.UnassignedShards}}health-red{{end}}">{{.Overview.Health.UnassignedShards}}</span></div>
       {{with .Overview.Totals}}{{if .OK}}
       <div class="stat"><span class="k">Indices</span><span class="v">{{.Indices}}</span></div>
-      <div class="stat"><span class="k">Docs</span><span class="v">{{.Docs}}</span></div>
-      <div class="stat"><span class="k">Deleted docs</span><span class="v">{{.Deleted}}</span></div>
+      <div class="stat"><span class="k">Docs</span><span class="v" title="{{.Docs}}">{{count .Docs}}</span></div>
+      <div class="stat"><span class="k">Deleted docs</span><span class="v" title="{{.Deleted}}">{{count .Deleted}}</span></div>
       <div class="stat"><span class="k">Store size</span><span class="v">{{.StoreSize}}</span></div>
       {{end}}{{end}}
     </section>
@@ -159,7 +159,7 @@
         {{range .Rows}}
         <tr>
           <th class="idx" scope="row"><a class="health-{{.Health}}" href="/c/{{$c}}/indices/{{.Index}}">{{.Index}}</a></th>
-          {{range .Cells}}<td><span class="shards">{{range .}}<span class="shard {{if eq .State "UNASSIGNED"}}u{{else if eq .State "RELOCATING"}}relo{{else if eq .PriRep "p"}}p{{else}}r{{end}}" tabindex="0">{{.Shard}}<span class="tip">
+          {{range .Cells}}<td><span class="shards">{{range .}}<span class="shard {{if eq .State "UNASSIGNED"}}u{{else if eq .State "RELOCATING"}}relo{{else if eq .State "INITIALIZING"}}init{{else if eq .PriRep "p"}}p{{else}}r{{end}}"{{if ne .State "STARTED"}} tabindex="0"{{end}}>{{.Shard}}<span class="tip">
               <b>{{.Index}}</b> · shard {{.Shard}} · {{if eq .PriRep "p"}}primary{{else}}replica{{end}}<br>
               state: {{.State}}{{if .Node}} on {{.Node}}{{end}}<br>
               {{if .Docs}}docs: {{.Docs}} · size: {{.Store}}<br>{{end}}
@@ -178,6 +178,7 @@
         <span class="shard p">n</span> primary
         <span class="shard r">n</span> replica
         <span class="shard relo">n</span> relocating
+        <span class="shard init">n</span> initializing
         <span class="shard u">n</span> unassigned
       </p>
     </section>

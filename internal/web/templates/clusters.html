@@ -88,7 +88,7 @@
           {{else}}
           <td>{{.Nodes}}</td>
           <td>{{if .HasStats}}{{.Indices}}{{else}}<span class="muted">—</span>{{end}}</td>
-          <td>{{if .HasStats}}{{.Docs}}{{else}}<span class="muted">—</span>{{end}}</td>
+          <td>{{if .HasStats}}<span title="{{.Docs}}">{{count .Docs}}</span>{{else}}<span class="muted">—</span>{{end}}</td>
           <td>{{.Shards}}</td>
           <td class="{{if .Unassigned}}crit-text{{end}}">{{.Unassigned}}</td>
           <td class="{{if .Relocating}}warn-text{{end}}">{{.Relocating}}</td>
@@ -124,7 +124,7 @@
         <span class="cluster-stats">
           <span><b>{{.Nodes}}</b> nodes</span>
           <span><b>{{if .HasStats}}{{.Indices}}{{else}}—{{end}}</b> indices</span>
-          <span><b>{{if .HasStats}}{{.Docs}}{{else}}—{{end}}</b> docs</span>
+          <span title="{{if .HasStats}}{{.Docs}}{{end}}"><b>{{if .HasStats}}{{count .Docs}}{{else}}—{{end}}</b> docs</span>
           <span><b>{{.Shards}}</b> shards</span>
           {{if .HasStats}}<span><b>{{.Store}}</b></span>{{end}}
           {{if .Unassigned}}<span class="crit-text"><b>{{.Unassigned}}</b> unassigned</span>{{end}}

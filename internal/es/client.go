@@ -37,6 +37,10 @@ type Client struct {
 
 	mu   sync.Mutex
 	info *Info
+
+	cacheMu  sync.Mutex
+	cache    map[string]*cacheEntry
+	cacheGen uint64
 }
 
 type Info struct {
@@ -48,6 +52,7 @@ type Info struct {
 type Response struct {
 	Status int
 	Body   []byte
+	Took   time.Duration // round trip to ES, not time spent waiting on the cache
 }
 
 func (r *Response) OK() bool { return r.Status >= 200 && r.Status < 300 }
@@ -129,6 +134,13 @@ func (c *Client) Do(ctx context.Context, method, path string, body io.Reader) (*
 		req.Header.Set("Content-Type", "application/json")
 	}
 
+	if method != http.MethodGet && method != http.MethodHead && !readOnlyPOST[ref.Path] {
+		// After the write, whatever happened: a failed request may still
+		// have changed state.
+		defer c.invalidate()
+	}
+
+	start := time.Now()
 	resp, err := c.http.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("cluster %s: %w", c.Name, err)
@@ -139,7 +151,7 @@ func (c *Client) Do(ctx context.Context, method, path string, body io.Reader) (*
 	if err != nil {
 		return nil, fmt.Errorf("cluster %s: reading response: %w", c.Name, err)
 	}
-	return &Response{Status: resp.StatusCode, Body: data}, nil
+	return &Response{Status: resp.StatusCode, Body: data, Took: time.Since(start)}, nil
 }
 
 // GetJSON performs a GET and decodes the response into out.
@@ -148,8 +160,12 @@ func (c *Client) GetJSON(ctx context.Context, path string, out any) error {
 	if err != nil {
 		return err
 	}
+	return decodeOK(c.Name, path, resp, out)
+}
+
+func decodeOK(cluster, path string, resp *Response, out any) error {
 	if !resp.OK() {
-		return fmt.Errorf("cluster %s: %s: %s", c.Name, path, resp.ErrorReason())
+		return fmt.Errorf("cluster %s: %s: %s", cluster, path, resp.ErrorReason())
 	}
 	return json.Unmarshal(resp.Body, out)
 }

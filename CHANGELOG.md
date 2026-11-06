@@ -5,6 +5,41 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.1] - 2026-11-06
+
+### Changed
+
+- Cluster reads behind the overview and landing page (health, nodes, shards,
+  stats, routing) go through a shared 5-second cache per cluster.
+  Concurrent viewers wait on one in-flight request instead of each querying
+  ES, so auto-refresh across many operators costs ES at most one request per
+  path per window per replica. Errors are cached too, so a dead cluster is not
+  hammered. Any write made through Medulla clears the cache, so the page
+  after a change shows it. A viewer leaving mid-load no longer cancels the
+  fetch for the others.
+- Allocation explains on the overview run up to 4 at a time instead of one
+  after another: a sick cluster's overview waits at most two rounds of the ES
+  timeout instead of eight.
+- Response time on the landing page is the ES round trip, not time spent
+  waiting on the cache.
+- Large counts (docs, deleted docs) read as `12.3M`, with the exact figure on
+  hover.
+- Shard matrix: a copy being built (`INITIALIZING`, e.g. the target of a
+  relocation) shows dashed in the warning colour instead of as a settled
+  shard; only shards that are not `STARTED` take keyboard focus, so a large
+  cluster is no longer hundreds of Tab stops.
+- The Medulla logo links to the clusters page from every page.
+
+### Security
+
+- Weekly scheduled `govulncheck` run, independent of pushes: new standard
+  library advisories surface without a code change, and Dependabot does not
+  raise the `go` directive. A failed scheduled run notifies the owner.
+- `govulncheck` pinned to v1.9.0 instead of `@latest`, consistent with the
+  SHA-pinned Actions; the vulnerability database it queries is always current.
+- Builder image pinned by digest (`golang:1.27-alpine@sha256:…`); Dependabot's
+  docker ecosystem keeps it current.
+
 ## [0.6.0] - 2026-11-06
 
 ### Added
