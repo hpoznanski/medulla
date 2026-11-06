@@ -38,15 +38,15 @@
         {{/* datalist: the browser suggests matching cluster names as you
              type — native, no script. Enter applies the filter. */}}
         <input type="search" name="q" value="{{$v.Q}}" list="cluster-names" maxlength="100"
-               placeholder="filter clusters…" aria-label="filter clusters by name" autocomplete="off" autofocus>
+               placeholder="filter clusters…" aria-label="filter clusters by name" autocomplete="off" {{if not $v.Refresh}}autofocus{{end}}>
         <datalist id="cluster-names">{{range .Clusters}}<option value="{{.}}">{{end}}</datalist>
         <button type="submit">Filter</button>
         {{if $v.Q}}<a class="muted" href="{{$v.ClearFilter}}">clear</a>{{end}}
       </form>
 
       <nav class="layout-toggle" aria-label="layout">
-        <a href="{{$v.LayoutLink "cards"}}" class="{{if eq .Layout "cards"}}active{{end}}" {{if eq .Layout "cards"}}aria-current="true"{{end}}>▦ cards</a>
-        <a href="{{$v.LayoutLink "list"}}" class="{{if eq .Layout "list"}}active{{end}}" {{if eq .Layout "list"}}aria-current="true"{{end}}>☰ list</a>
+        <a href="{{$v.LayoutLink "cards"}}" class="{{if eq .Layout "cards"}}active{{end}}" {{if eq .Layout "cards"}}aria-current="true"{{end}}><span aria-hidden="true">▦</span> cards</a>
+        <a href="{{$v.LayoutLink "list"}}" class="{{if eq .Layout "list"}}active{{end}}" {{if eq .Layout "list"}}aria-current="true"{{end}}><span aria-hidden="true">☰</span> list</a>
       </nav>
     </section>
 
@@ -113,7 +113,7 @@
       <a class="cluster-card {{if .Unreachable}}unreachable{{end}}" href="/c/{{.Name}}/overview">
         <span class="cluster-name">
           <span class="dot {{if .Unreachable}}crit{{else}}{{.Health}}{{end}}"></span>
-          {{.Name}}
+          {{.Name}}<span class="sr-only">, {{.Health}}</span>
           {{if .Unreachable}}<span class="badge health-red">{{.Reason}}</span>{{else if .Partial}}<span class="badge health-yellow">partial</span>{{end}}
         </span>
         {{if .Unreachable}}

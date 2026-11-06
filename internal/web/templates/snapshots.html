@@ -74,7 +74,7 @@
             </form>
             <form method="post" action="/c/{{$c}}/snapshots/delete" class="confirm-inline">
               <input type="hidden" name="repo" value="{{$r}}"><input type="hidden" name="name" value="{{.Snapshot}}">
-              <input name="confirm" placeholder="type name" autocomplete="off">
+              <input name="confirm" placeholder="type name" autocomplete="off" aria-label="type {{.Snapshot}} to confirm deletion">
               <button class="danger-text">delete</button>
             </form>
           </td>

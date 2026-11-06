@@ -3,7 +3,7 @@
   --bg: #12191c; --panel: #182226; --border: #2a373b;
   --ink: #dfe7e6; --muted: #85989c;
   --accent: #43b3a6; --accent-ink: #0d1517;
-  --ok: #4fae6c; --warn: #d9a13b; --crit: #d4685c;
+  --ok: #4fae6c; --warn: #d9a13b; --crit: #e07a70; /* each >= 4.5:1 on every surface, WCAG AA */
   --replica-bg: #1c2a2e;
   color-scheme: dark;
 }
@@ -106,9 +106,9 @@ input:focus, button:focus, a:focus { outline: 2px solid var(--accent); outline-o
 .pages a { color: var(--muted); text-decoration: none; margin-right: .8rem; font-size: .85rem; }
 .pages a.active { color: var(--ink); border-bottom: 2px solid var(--accent); }
 .badge { font-family: ui-monospace, monospace; font-size: .7rem; border-radius: 3px; padding: .05rem .4rem; }
-.badge.health-green { background: color-mix(in srgb, var(--ok) 18%, transparent); }
+.badge.health-green { background: color-mix(in srgb, var(--ok) 12%, transparent); }
 .badge.health-yellow { background: color-mix(in srgb, var(--warn) 20%, transparent); }
-.badge.health-red { background: color-mix(in srgb, var(--crit) 18%, transparent); }
+.badge.health-red { background: color-mix(in srgb, var(--crit) 12%, transparent); }
 .banner.notice {
   background: color-mix(in srgb, var(--accent) 12%, transparent);
   border: 1px solid var(--accent); color: var(--ink);
@@ -126,7 +126,7 @@ input:focus, button:focus, a:focus { outline: 2px solid var(--accent); outline-o
   background: var(--panel); color: var(--ink); cursor: pointer; font-size: .75rem;
 }
 .inline-form button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); font-weight: 600; }
-.inline-form button.danger { background: var(--crit); border-color: var(--crit); color: #fff; font-weight: 600; }
+.inline-form button.danger { background: var(--crit); border-color: var(--crit); color: var(--accent-ink); font-weight: 600; }
 .actions { display: flex; gap: .3rem; }
 .actions form { display: inline; }
 pre.json { font-family: ui-monospace, monospace; font-size: .75rem; line-height: 1.5; margin: 0 0 .6rem; }
@@ -216,10 +216,10 @@ pre.json { font-family: ui-monospace, monospace; font-size: .75rem; line-height:
 
 th a.sort { color: inherit; text-decoration: none; }
 th a.sort:hover { color: var(--ink); }
-th a.sort::after { content: "↕"; margin-left: .3rem; opacity: .35; }
+th a.sort::after { content: "↕" / ""; margin-left: .3rem; opacity: .35; }
 th a.sort.sorted { color: var(--accent); }
-th a.sort.sorted.asc::after { content: "▲"; opacity: 1; }
-th a.sort.sorted.desc::after { content: "▼"; opacity: 1; }
+th a.sort.sorted.asc::after { content: "▲" / ""; opacity: 1; }
+th a.sort.sorted.desc::after { content: "▼" / ""; opacity: 1; }
 
 a.brand { color: var(--ink); text-decoration: none; }
 .warn-text { color: var(--warn); }
@@ -264,3 +264,9 @@ details.why[open] code {
 }
 .cluster-error.partial { color: var(--warn); }
 .cluster-list th, .cluster-list td { padding: .35rem .5rem; }
+
+/* Text for screen readers where the visual cue is colour alone. */
+.sr-only {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}

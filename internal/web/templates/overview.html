@@ -91,7 +91,7 @@
               <form class="confirm-inline" method="post" action="/c/{{$c}}/routing/exclude">
                 <input type="hidden" name="node" value="{{.Name}}">
                 <input type="hidden" name="action" value="exclude">
-                <input name="confirm" autocomplete="off" placeholder="type {{.Name}}">
+                <input name="confirm" autocomplete="off" placeholder="type {{.Name}}" aria-label="type {{.Name}} to confirm draining it">
                 <button class="danger">exclude</button>
               </form>
             {{end}}
@@ -158,7 +158,7 @@
         <tbody>
         {{range .Rows}}
         <tr>
-          <th class="idx" scope="row"><a class="health-{{.Health}}" href="/c/{{$c}}/indices/{{.Index}}">{{.Index}}</a></th>
+          <th class="idx" scope="row"><a class="health-{{.Health}}" href="/c/{{$c}}/indices/{{.Index}}">{{.Index}}{{if ne .Health "green"}}<span class="sr-only">, {{.Health}}</span>{{end}}</a></th>
           {{range .Cells}}<td><span class="shards">{{range .}}<span class="shard {{if eq .State "UNASSIGNED"}}u{{else if eq .State "RELOCATING"}}relo{{else if eq .State "INITIALIZING"}}init{{else if eq .PriRep "p"}}p{{else}}r{{end}}"{{if ne .State "STARTED"}} tabindex="0"{{end}}>{{.Shard}}<span class="tip">
               <b>{{.Index}}</b> · shard {{.Shard}} · {{if eq .PriRep "p"}}primary{{else}}replica{{end}}<br>
               state: {{.State}}{{if .Node}} on {{.Node}}{{end}}<br>
