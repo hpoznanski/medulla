@@ -55,10 +55,17 @@ meter { width: 70px; }
 table.shardgrid { width: auto; min-width: 100%; }
 .shardgrid th, .shardgrid td { vertical-align: top; }
 .shardgrid thead th { position: sticky; top: 0; z-index: 2; background: var(--panel); }
+/* Index names wrap rather than truncate: data-stream backing indices share
+   long prefixes, and an ellipsis made distinct rows look identical. */
 .shardgrid th.idx {
   position: sticky; left: 0; z-index: 1; background: var(--panel);
-  max-width: 22rem; overflow: hidden; text-overflow: ellipsis; font-size: .75rem; font-weight: 400;
+  min-width: 12rem; max-width: 22rem; white-space: normal; overflow-wrap: anywhere;
+  font-size: .75rem; font-weight: 400;
 }
+/* The panel grows with a matrix wider than the page, so its background
+   always sits behind the table instead of stopping at the content width. */
+.matrix-panel { width: max-content; min-width: 100%; }
+.node-prefix { font-size: .75rem; margin: .2rem 0 .4rem; }
 .shardgrid thead th.idx { z-index: 3; }
 .shardgrid th.idx a { text-decoration: none; }
 .shardgrid th.idx a.health-green { color: var(--ink); }

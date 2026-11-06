@@ -246,10 +246,10 @@ Published to GitHub Container Registry on every version tag, built for **`linux/
 docker run -d --name medulla -p 8080:8080 \
   -v /etc/medulla/config.yaml:/etc/medulla/config.yaml:ro \
   -e SESSION_SECRET \
-  ghcr.io/hpoznanski/medulla:0.9.0
+  ghcr.io/hpoznanski/medulla:0.9.1
 ```
 
-Tags are `MAJOR.MINOR.PATCH` and `MAJOR.MINOR` (`0.9.0`, `0.9`). **There is no `latest`** — pin a version deliberately rather than having an image change under you on the next `docker pull`.
+Tags are `MAJOR.MINOR.PATCH` and `MAJOR.MINOR` (`0.9.1`, `0.9`). **There is no `latest`** — pin a version deliberately rather than having an image change under you on the next `docker pull`.
 
 Two consequences of the `FROM scratch` image worth knowing before you deploy it:
 
@@ -262,19 +262,19 @@ Use **cosign v3 or later**: releases are signed in the new Sigstore bundle forma
 
 ```sh
 # signature: built by this repo's CI from a version tag, nothing else
-cosign verify ghcr.io/hpoznanski/medulla:0.9.0 \
+cosign verify ghcr.io/hpoznanski/medulla:0.9.1 \
   --certificate-identity-regexp '^https://github.com/hpoznanski/medulla/\.github/workflows/ci\.yml@refs/tags/v' \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com
 
 # same for the chart
-cosign verify ghcr.io/hpoznanski/charts/medulla:0.9.0 \
+cosign verify ghcr.io/hpoznanski/charts/medulla:0.9.1 \
   --certificate-identity-regexp '^https://github.com/hpoznanski/medulla/\.github/workflows/ci\.yml@refs/tags/v' \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com
 
 # platforms, SBOM and provenance
-docker buildx imagetools inspect ghcr.io/hpoznanski/medulla:0.9.0
-docker buildx imagetools inspect ghcr.io/hpoznanski/medulla:0.9.0 --format '{{ json .SBOM }}'
-docker buildx imagetools inspect ghcr.io/hpoznanski/medulla:0.9.0 --format '{{ json .Provenance }}'
+docker buildx imagetools inspect ghcr.io/hpoznanski/medulla:0.9.1
+docker buildx imagetools inspect ghcr.io/hpoznanski/medulla:0.9.1 --format '{{ json .SBOM }}'
+docker buildx imagetools inspect ghcr.io/hpoznanski/medulla:0.9.1 --format '{{ json .Provenance }}'
 ```
 
 ## Production deployment (Kubernetes)
@@ -282,7 +282,7 @@ docker buildx imagetools inspect ghcr.io/hpoznanski/medulla:0.9.0 --format '{{ j
 Helm chart in [`deploy/helm/medulla`](deploy/helm/medulla) — hardened defaults (nonroot, read-only rootfs, no capabilities, no SA token), config-checksum rollouts, zone spreading, PDB. See the [chart README](deploy/helm/medulla/README.md) for installation, secret handling, and the security model.
 
 ```sh
-helm install medulla oci://ghcr.io/hpoznanski/charts/medulla --version 0.9.0 -f my-values.yaml
+helm install medulla oci://ghcr.io/hpoznanski/charts/medulla --version 0.9.1 -f my-values.yaml
 ```
 
 ## Operations

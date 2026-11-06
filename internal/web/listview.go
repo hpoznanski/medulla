@@ -221,9 +221,11 @@ const unassignedCol = "unassigned"
 // shardMatrix is the shard allocation grid: one row per index, one column
 // per node, plus an unassigned column when a shown index has any.
 type shardMatrix struct {
-	Nodes []string
-	Rows  []indexRow
-	Total int // indices before filtering
+	Nodes  []string
+	Labels []string // column headings: node names without Prefix
+	Prefix string   // shared by every node name, shown once above the matrix
+	Rows   []indexRow
+	Total  int // indices before filtering
 }
 
 type indexRow struct {
@@ -271,8 +273,13 @@ func buildMatrix(nodes []es.NodeInfo, shards []es.ShardInfo, filter string) shar
 		m.Nodes = append(m.Nodes, n)
 	}
 	slices.Sort(m.Nodes)
+	m.Prefix = commonNodePrefix(m.Nodes)
+	for _, n := range m.Nodes {
+		m.Labels = append(m.Labels, strings.TrimPrefix(n, m.Prefix))
+	}
 	if unassigned {
 		m.Nodes = append(m.Nodes, unassignedCol)
+		m.Labels = append(m.Labels, unassignedCol)
 	}
 	col := make(map[string]int, len(m.Nodes))
 	for i, n := range m.Nodes {
@@ -397,4 +404,33 @@ func nodeVersions(nodes []es.NodeInfo) []versionCount {
 	}
 	slices.SortFunc(out, func(a, b versionCount) int { return compareVersion(b.Version, a.Version) })
 	return out
+}
+
+// commonNodePrefix is the prefix every node name shares, cut back to the
+// last separator so labels split on a word boundary ("qa-es-data-" leaves
+// "gen301", not "n301"). Real fleets repeat a long prefix on every node,
+// and printing it in every column is what makes a wide cluster unreadable.
+// Returns "" unless it leaves every name a non-empty label and is worth
+// the indirection (at least 4 characters, at least 2 nodes).
+func commonNodePrefix(names []string) string {
+	if len(names) < 2 {
+		return ""
+	}
+	p := names[0]
+	for _, n := range names[1:] {
+		for !strings.HasPrefix(n, p) {
+			p = p[:len(p)-1]
+		}
+	}
+	cut := strings.LastIndexAny(p, "-._")
+	if cut < 3 {
+		return ""
+	}
+	p = p[:cut+1]
+	for _, n := range names {
+		if n == p {
+			return ""
+		}
+	}
+	return p
 }

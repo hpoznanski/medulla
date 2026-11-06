@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.1] - 2026-11-06
+
+### Fixed
+
+- Shard matrix on large clusters, reported against a real 10+ node fleet:
+  - Node columns drop the prefix every node shares (`qa-gcp-es-cfs-data-`
+    → `gen301`), stated once above the matrix with the full name on hover,
+    so far more nodes fit on screen.
+  - Index names wrap instead of truncating with `…`: data-stream backing
+    indices differ only at the end, and truncation made distinct rows look
+    identical. The full name is also on hover.
+  - The panel grows with a matrix wider than the page, instead of the table
+    running past the panel's background.
+
 ## [0.9.0] - 2026-11-06
 
 ### Added

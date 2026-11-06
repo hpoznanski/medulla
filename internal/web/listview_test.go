@@ -265,3 +265,29 @@ func TestOverviewUniformVersionNoBanner(t *testing.T) {
 		t.Error("version column missing")
 	}
 }
+
+func TestCommonNodePrefix(t *testing.T) {
+	for _, tt := range []struct {
+		names []string
+		want  string
+	}{
+		{[]string{"qa-gcp-es-cfs-data-gen301", "qa-gcp-es-cfs-data-gen302", "qa-gcp-es-cfs-data-gen310"}, "qa-gcp-es-cfs-data-"},
+		{[]string{"es01", "es02"}, ""},                            // no separator: "es0" would leave "1", "2"
+		{[]string{"prod-eu-hot-1", "prod-eu-warm-1"}, "prod-eu-"}, // cut back to the separator
+		{[]string{"node-a", "other-b"}, ""},
+		{[]string{"only-one-node"}, ""},
+		{[]string{"data-", "data-1"}, ""}, // would leave an empty label
+		{[]string{"a.b.c-1", "a.b.c-2"}, "a.b.c-"},
+	} {
+		if got := commonNodePrefix(tt.names); got != tt.want {
+			t.Errorf("commonNodePrefix(%v) = %q, want %q", tt.names, got, tt.want)
+		}
+	}
+
+	m := buildMatrix(
+		[]es.NodeInfo{{Name: "qa-es-data-gen301"}, {Name: "qa-es-data-gen302"}},
+		[]es.ShardInfo{{Index: "i", Shard: "0", PriRep: "p", State: "UNASSIGNED"}}, "")
+	if want := []string{"gen301", "gen302", "unassigned"}; !slices.Equal(m.Labels, want) || m.Prefix != "qa-es-data-" {
+		t.Errorf("labels = %v prefix = %q", m.Labels, m.Prefix)
+	}
+}

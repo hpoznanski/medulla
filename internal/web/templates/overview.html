@@ -149,7 +149,7 @@
     </section>
     {{end}}
 
-    <section class="panel">
+    <section class="panel matrix-panel">
       <h2>Shard allocation</h2>
       <form class="inline-form" method="get" action="/c/{{.Cluster}}/overview">
         {{if not $v.SortIsDefault}}<input type="hidden" name="sort" value="{{$v.Sort}}"><input type="hidden" name="dir" value="{{$v.Dir}}">{{end}}
@@ -161,19 +161,20 @@
         {{if $v.Q}}<a class="muted" href="{{$v.ClearFilter}}">clear</a>{{end}}
         <span class="muted">{{len .Matrix.Rows}} of {{.Matrix.Total}} indices</span>
       </form>
-      {{with .Matrix}}{{if .Rows}}
+      {{with .Matrix}}{{if .Rows}}{{$m := .}}
+      {{if .Prefix}}<p class="muted node-prefix">node names below omit the shared prefix <code>{{.Prefix}}</code></p>{{end}}
       {{/* No overflow container: it would clip the shard tooltips. A matrix
            wider than the page scrolls the page, and the sticky header and
            index column stay pinned to the viewport. */}}
       <table class="shardgrid">
         <thead><tr>
           <th class="idx">index</th>
-          {{range .Nodes}}<th class="{{if eq . "unassigned"}}crit-text{{else if index $excluded .}}crit-text{{end}}">{{.}}</th>{{end}}
+          {{range $i, $n := .Nodes}}<th title="{{$n}}" class="{{if eq $n "unassigned"}}crit-text{{else if index $excluded $n}}crit-text{{end}}">{{index $m.Labels $i}}</th>{{end}}
         </tr></thead>
         <tbody>
         {{range .Rows}}
         <tr>
-          <th class="idx" scope="row"><a class="health-{{.Health}}" href="/c/{{$c}}/indices/{{.Index}}">{{.Index}}{{if ne .Health "green"}}<span class="sr-only">, {{.Health}}</span>{{end}}</a></th>
+          <th class="idx" scope="row"><a class="health-{{.Health}}" href="/c/{{$c}}/indices/{{.Index}}" title="{{.Index}}">{{.Index}}{{if ne .Health "green"}}<span class="sr-only">, {{.Health}}</span>{{end}}</a></th>
           {{range .Cells}}<td><span class="shards">{{range .}}<span class="shard {{if eq .State "UNASSIGNED"}}u{{else if eq .State "RELOCATING"}}relo{{else if eq .State "INITIALIZING"}}init{{else if eq .PriRep "p"}}p{{else}}r{{end}}"{{if ne .State "STARTED"}} tabindex="0"{{end}}>{{.Shard}}<span class="tip">
               <b>{{.Index}}</b> · shard {{.Shard}} · {{if eq .PriRep "p"}}primary{{else}}replica{{end}}<br>
               state: {{.State}}{{if .Node}} on {{.Node}}{{end}}<br>

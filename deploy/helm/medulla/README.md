@@ -31,7 +31,7 @@ Install:
 
 ```sh
 # from the published OCI registry
-helm install medulla oci://ghcr.io/hpoznanski/charts/medulla --version 0.9.0 -f my-values.yaml
+helm install medulla oci://ghcr.io/hpoznanski/charts/medulla --version 0.9.1 -f my-values.yaml
 
 # or from a repo checkout
 helm install medulla deploy/helm/medulla -f my-values.yaml
