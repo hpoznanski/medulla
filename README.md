@@ -120,7 +120,11 @@ Open http://localhost:8080 and sign in as:
 | `reader` | `readerpw` | viewer — read-only everywhere |
 | `writer` | `writerpw` | operator — full cluster operations |
 
-The two accounts demonstrate RBAC: log in as each and compare what the UI offers. The demo stack is for evaluation only — plaintext demo credentials, no TLS.
+The two accounts demonstrate RBAC: log in as each and compare what the UI offers. To also see a cluster that hangs instead of answering, add the timeout overlay — a `dev-timeout` cluster that accepts connections and never replies:
+
+```sh
+docker-compose -f docker-compose.yml -f docker-compose.timeout.yml up -d --build
+``` The demo stack is for evaluation only — plaintext demo credentials, no TLS.
 
 ## Configuration
 

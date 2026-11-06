@@ -1,0 +1,19 @@
+# Opt-in demo of an unresponsive cluster, layered on docker-compose.yml:
+#
+#   docker-compose -f docker-compose.yml -f docker-compose.timeout.yml up -d --build
+#
+# "blackhole" accepts TCP connections and never answers, so the dev-timeout
+# cluster shows how Medulla handles a cluster that hangs (as opposed to one
+# that refuses connections): the landing page waits at most its 5s budget,
+# marks the cluster "timeout", and the other clusters render normally.
+services:
+  blackhole:
+    image: busybox:1.37.0
+    # every connection gets its own `sleep`, which holds it open silently
+    command: ["nc", "-lk", "-p", "9200", "-e", "sleep", "3600"]
+
+  medulla:
+    volumes:
+      - ./config.timeout.yaml:/etc/medulla/config.yaml:ro
+    depends_on:
+      blackhole: { condition: service_started }
