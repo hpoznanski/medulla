@@ -28,7 +28,7 @@ Medulla is the brain stem: small, always on, controls the vital functions.
 - **Analyze** — `_analyze` playground for analyzers and tokenizers.
 - **Cat browser** — 16 allowlisted `_cat` endpoints as tables sortable on any column (numbers and sizes like `1.2gb` by value), with a row filter; ES column and row order preserved until you sort. Anything outside the list is reachable from the REST console.
 - **REST console** — free-form requests, permission-gated: `rest:get` users get GET/HEAD only, enforced server-side. Request and response JSON are pretty-printed, and recent requests are replayable from a signed-cookie history that survives restarts and works across replicas.
-- **ES 7, ES 8 and OpenSearch** — flavor auto-detected per cluster.
+- **Elasticsearch 7.17, 8, 9 and OpenSearch 2, 3** — flavor auto-detected per cluster; every one of those versions is exercised end to end in CI on every change (`scripts/compat.sh`).
 
 ## Philosophy: fewer dependencies, smaller attack surface
 
@@ -100,6 +100,7 @@ roles:
 
 - Secrets enter via `${ENV_VAR}` or `${file:/path}` interpolation — from K8s Secrets; nothing sensitive in the config file itself. Values with newlines are rejected (YAML injection guard). Secrets redact themselves in all log/marshal output.
 - Session cookies: HttpOnly, SameSite=Lax, Secure by default; `session.secret` accepts a comma-separated key list for zero-logout rotation. Multi-replica works with a shared secret, no sticky sessions.
+- Sessions are stateless, so **signing out clears the browser's cookie but cannot revoke a copy of it**: a stolen cookie stays valid until `session.ttl` (default 12h). To revoke every session at once, remove the signing key — see [Revoking all sessions](#revoking-all-sessions). Keep `session.ttl` as short as your users tolerate.
 - Login rate limiting per username — independent of proxy topology, immune to X-Forwarded-For spoofing. Set `trusted_proxies` (ingress CIDRs) so audit logs record real client IPs instead of the proxy's.
 - CSRF: SameSite=Lax + Origin check on all non-GET requests.
 - Audit: every login attempt, denial, and state-changing request logged as JSON with user/roles/method/path/outcome/IP — never request bodies.
@@ -241,20 +242,33 @@ Published to GitHub Container Registry on every version tag, built for **`linux/
 docker run -d --name medulla -p 8080:8080 \
   -v /etc/medulla/config.yaml:/etc/medulla/config.yaml:ro \
   -e SESSION_SECRET \
-  ghcr.io/hpoznanski/medulla:0.7.0
+  ghcr.io/hpoznanski/medulla:0.8.0
 ```
 
-Tags are `MAJOR.MINOR.PATCH` and `MAJOR.MINOR` (`0.7.0`, `0.7`). **There is no `latest`** — pin a version deliberately rather than having an image change under you on the next `docker pull`.
+Tags are `MAJOR.MINOR.PATCH` and `MAJOR.MINOR` (`0.8.0`, `0.8`). **There is no `latest`** — pin a version deliberately rather than having an image change under you on the next `docker pull`.
 
 Two consequences of the `FROM scratch` image worth knowing before you deploy it:
 
 - **It runs as uid 65534 (nobody) and there is no shell.** A bind-mounted config must be readable by that uid, and `docker exec` cannot give you a prompt — there is no `/bin/sh` to exec. That is the point: a compromised container has no tooling to pivot with. Debug from the JSON logs and `/healthz`.
-- **The only writable path is whatever you mount.** Medulla never writes to disk — no cache, no state, no temp files — so a read-only root filesystem needs no exceptions.
+- **The only writable path is whatever you mount.** Medulla never writes to disk — no disk cache, no state, no temp files — so a read-only root filesystem needs no exceptions.
 
-Verify what you are running before you trust it:
+Verify what you are running before you trust it. Every release image and chart is signed with [cosign](https://github.com/sigstore/cosign) keyless signing — the signature ties the digest to this repository's release workflow, and is recorded in the public Rekor transparency log — and the image carries an SPDX SBOM and SLSA build provenance:
 
 ```sh
-docker buildx imagetools inspect ghcr.io/hpoznanski/medulla:0.7.0   # both platforms listed
+# signature: built by this repo's CI from a version tag, nothing else
+cosign verify ghcr.io/hpoznanski/medulla:0.8.0 \
+  --certificate-identity-regexp '^https://github.com/hpoznanski/medulla/\.github/workflows/ci\.yml@refs/tags/v' \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com
+
+# same for the chart
+cosign verify ghcr.io/hpoznanski/charts/medulla:0.8.0 \
+  --certificate-identity-regexp '^https://github.com/hpoznanski/medulla/\.github/workflows/ci\.yml@refs/tags/v' \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com
+
+# platforms, SBOM and provenance
+docker buildx imagetools inspect ghcr.io/hpoznanski/medulla:0.8.0
+docker buildx imagetools inspect ghcr.io/hpoznanski/medulla:0.8.0 --format '{{ json .SBOM }}'
+docker buildx imagetools inspect ghcr.io/hpoznanski/medulla:0.8.0 --format '{{ json .Provenance }}'
 ```
 
 ## Production deployment (Kubernetes)
@@ -262,7 +276,7 @@ docker buildx imagetools inspect ghcr.io/hpoznanski/medulla:0.7.0   # both platf
 Helm chart in [`deploy/helm/medulla`](deploy/helm/medulla) — hardened defaults (nonroot, read-only rootfs, no capabilities, no SA token), config-checksum rollouts, zone spreading, PDB. See the [chart README](deploy/helm/medulla/README.md) for installation, secret handling, and the security model.
 
 ```sh
-helm install medulla oci://ghcr.io/hpoznanski/charts/medulla --version 0.7.0 -f my-values.yaml
+helm install medulla oci://ghcr.io/hpoznanski/charts/medulla --version 0.8.0 -f my-values.yaml
 ```
 
 ## Operations
@@ -307,7 +321,16 @@ It explains **at most 8 shards per page load**; beyond that it prints "…and N 
 2. Wait longer than `session.ttl` (default 12h) so every old cookie has expired.
 3. Drop the old key: `secret: "${NEW_SECRET}"`.
 
-Rotate this way after any suspected leak. Removing the old key immediately also works and simply logs everyone out.
+This is routine rotation only. It keeps the old key valid on purpose, so it does **not** cut off a stolen cookie.
+
+### Revoking all sessions
+
+After a suspected leak of a session cookie or of `session.secret` itself, replace the key outright — do not keep the old one in the list:
+
+1. Set `secret: "${NEW_SECRET}"` (a fresh value, at least 32 bytes) and roll out to every replica.
+2. Every existing session, stolen or not, now fails verification; everyone signs in again.
+
+There is no per-user revocation: sessions are stateless by design (no store to coordinate between replicas), so the key is the only switch.
 
 ### When LDAP is down
 
@@ -375,6 +398,24 @@ Fixed unless the table says otherwise. All are compile-time constants — delibe
 `env: production` requires `session.secret` and rejects any key shorter than 32 bytes. When `env` is absent from the config file, Medulla falls back to the **`MEDULLA_ENV`** environment variable — convenient for Kubernetes, where it can come from the Deployment rather than the ConfigMap.
 
 Medulla exposes `/healthz` and nothing else. There is no `/metrics` endpoint; observability comes from the JSON logs.
+
+## Stability and compatibility
+
+From 1.0.0 Medulla follows [Semantic Versioning](https://semver.org/). These are the public interface — a change that breaks any of them requires a major version:
+
+| Interface | Stable means |
+|---|---|
+| Config file | Every documented key in [`config.example.yaml`](config.example.yaml), its meaning and its default. `${ENV}` / `${file:...}` interpolation. |
+| RBAC atoms | The names in the [RBAC table](#rbac) and what each one grants. A new atom never widens what an existing role can do. |
+| URLs | Page paths (`/c/{cluster}/overview`, `…/indices`, …) and their query parameters (`sort`, `dir`, `q`, `health`, `refresh`, `layout`), so bookmarks keep working. |
+| Audit log | Field names and `event`/`outcome` values of `"type":"audit"` records. |
+| Container image | Registry path, tag scheme (`X.Y.Z`, `X.Y`, no `latest`), uid 65534, `FROM scratch`. |
+| Helm chart | Every key in `values.yaml`, validated by `values.schema.json`. |
+| Supported clusters | The versions under [Features](#features). Dropping one is a major version. |
+
+Not covered: HTML markup and CSS classes, log lines other than audit records, and Go packages under `internal/` (not importable by design).
+
+**Deprecation.** Nothing in the table is removed without warning: a deprecated config key or chart value keeps working for at least one minor release and logs a `WARN` on startup naming its replacement. It is listed under *Deprecated* in the [CHANGELOG](CHANGELOG.md) and removed only in the next major.
 
 ## What Medulla is not
 

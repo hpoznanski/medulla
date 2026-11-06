@@ -5,6 +5,53 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.0] - 2026-11-06
+
+Release candidate for 1.0.0: no new features, everything here hardens what
+1.0 will promise.
+
+### Added
+
+- Signed releases: the container image and the Helm chart are signed with
+  cosign keyless signing (GitHub OIDC identity of the release workflow,
+  recorded in the Rekor transparency log). The image also carries an SPDX
+  SBOM and SLSA provenance (`mode=max`). Verification commands in the README.
+- Support matrix tested in CI on every change: Elasticsearch 7.17, 8.19, 9.2
+  and OpenSearch 2.19, 3.3, each through `scripts/compat.sh` — every page,
+  index/alias/template/settings/routing writes, cache invalidation after each
+  write, RBAC denials, and an unreachable cluster on the landing page.
+  Releases are gated on it.
+- `values.schema.json` for the Helm chart: a misspelt top-level key, an
+  invalid `service.type` or `replicaCount: 0` fails at install time instead of
+  being silently ignored.
+- README: *Stability and compatibility* — what 1.0 freezes (config keys, RBAC
+  atoms, URLs and their parameters, audit fields, image tags, chart values,
+  supported versions) and the deprecation rule.
+- README: *Revoking all sessions*, and the note that signing out cannot revoke
+  a copied cookie.
+
+### Fixed
+
+- Elasticsearch 9 was shown as `unknown`: flavor detection only knew 7 and 8.
+  Any Elasticsearch from 7 up is now `es<major>`.
+- Cluster version was cached for the life of the process, so after a rolling
+  upgrade the old version showed until Medulla restarted. It now follows the
+  shared 5-second cache.
+- README advised the zero-logout rotation after a suspected leak; that keeps
+  the old key valid and so keeps a stolen cookie working. It now says to
+  replace the key outright.
+
+### Accessibility
+
+- Critical red raised to `#e07a70` and badge tints lowered, so every text
+  colour meets WCAG AA (4.5:1) on every surface it appears on; danger buttons
+  use dark text (white on red failed).
+- Health conveyed by colour alone now has screen-reader text (cluster cards,
+  shard matrix index names); decorative sort arrows and layout icons are
+  hidden from screen readers (`aria-sort` carries the state).
+- The landing filter no longer takes focus on each auto-refresh.
+- The node-drain and snapshot-delete confirmation inputs have labels.
+
 ## [0.7.0] - 2026-11-06
 
 ### Added
