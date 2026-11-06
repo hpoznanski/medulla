@@ -18,7 +18,7 @@ Medulla is the brain stem: small, always on, controls the vital functions.
 ## Features
 
 - **Clusters landing page** — every cluster at a glance: health, version/flavor, nodes, indices, docs, unassigned shards. Cluster switcher on every page.
-- **Overview** — cluster totals (indices, docs, store size), node stats (heap/disk/CPU), a visual shard allocation grid with per-shard hover details, and an *allocation explain* panel that shows the actual root cause for every unassigned shard (deciders parsed, grouped by cause).
+- **Overview** — cluster totals (indices, docs, store size), a sortable node table (heap/disk/CPU/load/shards), an index × node shard allocation matrix with an index filter and per-shard hover details, opt-in auto-refresh, and an *allocation explain* panel that shows the actual root cause for every unassigned shard (deciders parsed, grouped by cause).
 - **Shard routing** — drain a single node with one click (type-name-to-confirm), showing live progress until it reports *drained — safe to stop*; cluster-wide `allocation.enable` / `rebalance.enable` switches, with a standing warning while any restriction is in place.
 - **Index management** — create, delete (type-name-to-confirm), open/close, refresh, flush, force-merge; settings/mappings/aliases detail view; edit or reset any dynamic index setting, with ES defaults shown alongside what is explicitly set.
 - **Aliases** — list, add, remove.
@@ -241,10 +241,10 @@ Published to GitHub Container Registry on every version tag, built for **`linux/
 docker run -d --name medulla -p 8080:8080 \
   -v /etc/medulla/config.yaml:/etc/medulla/config.yaml:ro \
   -e SESSION_SECRET \
-  ghcr.io/hpoznanski/medulla:0.4.0
+  ghcr.io/hpoznanski/medulla:0.5.0
 ```
 
-Tags are `MAJOR.MINOR.PATCH` and `MAJOR.MINOR` (`0.4.0`, `0.4`). **There is no `latest`** — pin a version deliberately rather than having an image change under you on the next `docker pull`.
+Tags are `MAJOR.MINOR.PATCH` and `MAJOR.MINOR` (`0.5.0`, `0.5`). **There is no `latest`** — pin a version deliberately rather than having an image change under you on the next `docker pull`.
 
 Two consequences of the `FROM scratch` image worth knowing before you deploy it:
 
@@ -254,7 +254,7 @@ Two consequences of the `FROM scratch` image worth knowing before you deploy it:
 Verify what you are running before you trust it:
 
 ```sh
-docker buildx imagetools inspect ghcr.io/hpoznanski/medulla:0.4.0   # both platforms listed
+docker buildx imagetools inspect ghcr.io/hpoznanski/medulla:0.5.0   # both platforms listed
 ```
 
 ## Production deployment (Kubernetes)
@@ -262,7 +262,7 @@ docker buildx imagetools inspect ghcr.io/hpoznanski/medulla:0.4.0   # both platf
 Helm chart in [`deploy/helm/medulla`](deploy/helm/medulla) — hardened defaults (nonroot, read-only rootfs, no capabilities, no SA token), config-checksum rollouts, zone spreading, PDB. See the [chart README](deploy/helm/medulla/README.md) for installation, secret handling, and the security model.
 
 ```sh
-helm install medulla oci://ghcr.io/hpoznanski/charts/medulla --version 0.4.0 -f my-values.yaml
+helm install medulla oci://ghcr.io/hpoznanski/charts/medulla --version 0.5.0 -f my-values.yaml
 ```
 
 ## Operations
@@ -366,6 +366,7 @@ Fixed unless the table says otherwise. All are compile-time constants — delibe
 | Graceful shutdown | 10s | No |
 | Landing page cluster probe | 5s for all clusters, queried in parallel | No |
 | Allocation explains per overview | 8 shards | No |
+| Overview auto-refresh | off, 10s, 30s or 60s | Per page, `?refresh=` |
 | ES response size read | 64 MB | No |
 | REST console history | 20 entries; bodies over 800 bytes stored without the body | No |
 | `_cat` endpoints exposed | 16, allowlisted | No |

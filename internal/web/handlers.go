@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
-	"sort"
 	"strconv"
 	"sync"
 	"time"
@@ -161,7 +160,7 @@ type overviewData struct {
 	pageData
 	Overview   *es.Overview
 	Info       *es.Info
-	NodeShards []nodeShards
+	Matrix     shardMatrix
 	Explains   []explainGroup
 	ExplainCap int
 	Routing    *es.Routing
@@ -169,6 +168,8 @@ type overviewData struct {
 	ShardCount map[string]int  // node name -> shards still held
 	CanCluster bool
 	Notice     string
+	View       overviewView
+	Updated    string
 
 	AllocationValues []string
 	RebalanceValues  []string
@@ -181,22 +182,20 @@ type explainGroup struct {
 	RawJSON     string
 }
 
-type nodeShards struct {
-	Node   string
-	Shards []es.ShardInfo
-}
-
 func (s *Server) handleOverview(w http.ResponseWriter, r *http.Request) {
 	sess := sessionFrom(r)
 	cluster := r.PathValue("cluster")
 	client := clientFrom(r)
 	page := s.page(r, "overview")
+	view := parseOverviewView(r.URL.Query())
 
 	overview, err := client.Overview(r.Context())
 	if err != nil {
 		s.logger.ErrorContext(r.Context(), "overview failed", "cluster", cluster, "err", err)
 		page.Error = err.Error()
-		s.render(w, "overview.html", overviewData{pageData: page})
+		// View carries the refresh: a sick cluster is exactly when the
+		// operator wants the page to keep polling.
+		s.render(w, "overview.html", overviewData{pageData: page, View: view})
 		return
 	}
 	info, err := client.Info(r.Context())
@@ -221,16 +220,17 @@ func (s *Server) handleOverview(w http.ResponseWriter, r *http.Request) {
 	// point at which it is safe to stop, so the two states must look different.
 	shardCount := map[string]int{}
 	for _, sh := range overview.Shards {
-		if sh.Node != "" && sh.State != "UNASSIGNED" {
-			shardCount[sh.Node]++
+		if node := shardNode(sh); node != "" && sh.State != "UNASSIGNED" {
+			shardCount[node]++
 		}
 	}
+	sortNodes(overview.Nodes, view, shardCount)
 
 	s.render(w, "overview.html", overviewData{
 		pageData:   page,
 		Overview:   overview,
 		Info:       info,
-		NodeShards: groupShards(overview.Shards),
+		Matrix:     buildMatrix(overview.Nodes, overview.Shards, view.Q),
 		Explains:   explains,
 		ExplainCap: capped,
 		Routing:    routing,
@@ -238,6 +238,8 @@ func (s *Server) handleOverview(w http.ResponseWriter, r *http.Request) {
 		ShardCount: shardCount,
 		CanCluster: s.rbac.Allowed(sess.Roles, cluster, rbac.ClusterWrite),
 		Notice:     r.URL.Query().Get("notice"),
+		View:       view,
+		Updated:    time.Now().UTC().Format("15:04:05 UTC"),
 
 		AllocationValues: es.AllocationEnableValues,
 		RebalanceValues:  es.RebalanceEnableValues,
@@ -333,34 +335,6 @@ func (s *Server) explainUnassigned(ctx context.Context, client *es.Client, shard
 		out = append(out, *byCause[cause])
 	}
 	return out, capped
-}
-
-// groupShards buckets shards per node; unassigned shards get their own bucket.
-func groupShards(shards []es.ShardInfo) []nodeShards {
-	byNode := map[string][]es.ShardInfo{}
-	for _, sh := range shards {
-		node := sh.Node
-		if sh.State == "UNASSIGNED" {
-			node = "unassigned"
-		}
-		byNode[node] = append(byNode[node], sh)
-	}
-	names := make([]string, 0, len(byNode))
-	for n := range byNode {
-		if n != "unassigned" {
-			names = append(names, n)
-		}
-	}
-	sort.Strings(names)
-	if _, ok := byNode["unassigned"]; ok {
-		names = append(names, "unassigned")
-	}
-
-	out := make([]nodeShards, 0, len(names))
-	for _, n := range names {
-		out = append(out, nodeShards{Node: n, Shards: byNode[n]})
-	}
-	return out
 }
 
 var _ http.Handler = (*Server)(nil)

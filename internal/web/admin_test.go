@@ -489,7 +489,7 @@ func TestOverviewSurvivesRoutingFailure(t *testing.T) {
 	s, codec := testServerWithRoles(t, esrv.URL)
 
 	rec, body := get(t, s, sessionCookieFor(t, codec, "u", "admin"), "/c/dev/overview")
-	if rec.Code != http.StatusOK || !strings.Contains(body, "shardgrid") {
+	if rec.Code != http.StatusOK || !strings.Contains(body, "Shard allocation") {
 		t.Errorf("overview lost to a routing read failure: status=%d", rec.Code)
 	}
 	// An unreadable state must not be dressed up as a known restriction, and

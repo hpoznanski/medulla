@@ -49,12 +49,21 @@ th, td { padding: .35rem .7rem; border-bottom: 1px solid var(--border); white-sp
 tr:last-child td { border-bottom: 0; }
 meter { width: 70px; }
 
-/* No overflow here: shard rows wrap, and any clipping would cut off the
-   hover tooltips, which sit above their shard and escape the grid box. */
-.shardgrid { display: flex; flex-direction: column; gap: .45rem; overflow: visible; }
-.shardrow { display: flex; gap: .7rem; align-items: flex-start; }
-.shardrow .node { font-family: ui-monospace, monospace; font-size: .75rem; width: 11rem; flex-shrink: 0; padding-top: .2rem; }
-.shardrow .node.crit { color: var(--crit); }
+/* Shard matrix: index rows x node columns. Deliberately not in an overflow
+   container — that would clip the hover tooltips — so a wide matrix scrolls
+   the page, and sticky header/index column pin to the viewport. */
+table.shardgrid { width: auto; min-width: 100%; }
+.shardgrid th, .shardgrid td { vertical-align: top; }
+.shardgrid thead th { position: sticky; top: 0; z-index: 2; background: var(--panel); }
+.shardgrid th.idx {
+  position: sticky; left: 0; z-index: 1; background: var(--panel);
+  max-width: 22rem; overflow: hidden; text-overflow: ellipsis; font-size: .75rem; font-weight: 400;
+}
+.shardgrid thead th.idx { z-index: 3; }
+.shardgrid th.idx a { text-decoration: none; }
+.shardgrid th.idx a.health-green { color: var(--ink); }
+.shardgrid th.idx a:hover { text-decoration: underline; }
+.shardgrid tbody tr:hover > * { background: var(--replica-bg); }
 .shards { display: flex; gap: .3rem; flex-wrap: wrap; }
 .shard {
   font-family: ui-monospace, monospace; font-size: .68rem;
@@ -197,3 +206,15 @@ pre.json { font-family: ui-monospace, monospace; font-size: .75rem; line-height:
 .explain-group { border-top: 1px solid var(--border); padding-top: .5rem; margin-top: .5rem; }
 .explain-group:first-of-type { border-top: 0; margin-top: 0; }
 .explain-shards { display: flex; gap: .4rem; flex-wrap: wrap; margin: .2rem 0; }
+
+.refresh-bar { display: flex; gap: .7rem; align-items: center; justify-content: flex-end; font-size: .75rem; font-family: ui-monospace, monospace; }
+.refresh-bar a { color: var(--muted); text-decoration: none; padding: .05rem .4rem; border-radius: 3px; border: 1px solid transparent; }
+.refresh-bar a:hover { color: var(--ink); border-color: var(--border); }
+.refresh-bar a.active { color: var(--accent-ink); background: var(--accent); font-weight: 600; }
+
+th a.sort { color: inherit; text-decoration: none; }
+th a.sort:hover { color: var(--ink); }
+th a.sort::after { content: "↕"; margin-left: .3rem; opacity: .35; }
+th a.sort.sorted { color: var(--accent); }
+th a.sort.sorted.asc::after { content: "▲"; opacity: 1; }
+th a.sort.sorted.desc::after { content: "▼"; opacity: 1; }

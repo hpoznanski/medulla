@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] - 2026-11-06
+
+### Added
+
+- Overview auto-refresh: `off · 10s · 30s · 60s`, opt-in per page via
+  `?refresh=N` and a plain `<meta http-equiv="refresh">` — no JavaScript, CSP
+  unchanged. Fixed intervals only; each refresh repeats every ES call behind
+  the page, so there is no free-form value and no interval under 10s.
+- Sortable Nodes table: click a column header (node, ip, heap, disk, cpu, load,
+  shards) to sort server-side; metrics open worst-first. New `shards` column
+  with the number of shards each node holds.
+- Shard allocation is now an index × node matrix: one row per index, one column
+  per node, unhealthy indices (unassigned primary, then replica) listed first,
+  index names link to the index detail page. Sticky header and index column on
+  wide clusters, and a case-insensitive index-name filter.
+
+### Fixed
+
+- A relocating shard is now counted on its source node. `_cat/shards` reports
+  its node as `src -> ip id dst`, which matched no node, so a draining node's
+  `N left` undercounted while shards were moving.
+
 ## [0.4.0] - 2026-08-14
 
 ### Added

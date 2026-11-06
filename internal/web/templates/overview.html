@@ -6,11 +6,20 @@
   <title>Medulla — {{.Cluster}}</title>
   <link rel="icon" type="image/svg+xml" href="/static/logo.svg">
   <link rel="stylesheet" href="/static/style.css">
+  {{if .View.Refresh}}<meta http-equiv="refresh" content="{{.View.Refresh}}">{{end}}
 </head>
 <body>
   {{template "topbar" .}}
 
   <main>
+  {{$v := .View}}
+  <nav class="refresh-bar" aria-label="auto-refresh">
+    <span class="muted">auto-refresh</span>
+    {{range $v.RefreshIntervals}}
+      <a href="{{$v.RefreshEvery .}}" {{if eq . $v.Refresh}}class="active" aria-current="true"{{end}}>{{if .}}{{.}}s{{else}}off{{end}}</a>
+    {{end}}
+    {{if .Updated}}<span class="muted">· updated {{.Updated}}</span>{{end}}
+  </nav>
   {{if .Notice}}<div class="banner notice">{{.Notice}}</div>{{end}}
   {{if .Error}}
     <div class="banner error">{{.Error}}</div>
@@ -51,7 +60,12 @@
         {{/* Only worth a column when there are controls to offer or a node is
              actually excluded — otherwise viewers get an empty column. */}}
         {{$showAlloc := and (not .Routing.Unknown) (or .CanCluster .Routing.ExcludedNodes)}}
-        <tr><th>node</th><th>ip</th><th>roles</th><th>heap</th><th>disk</th><th>cpu</th><th>load</th>{{if $showAlloc}}<th>allocation</th>{{end}}</tr>
+        <tr>
+          {{template "sortth" ($v.Header "name" "node")}}{{template "sortth" ($v.Header "ip" "ip")}}<th>roles</th>
+          {{template "sortth" ($v.Header "heap" "heap")}}{{template "sortth" ($v.Header "disk" "disk")}}
+          {{template "sortth" ($v.Header "cpu" "cpu")}}{{template "sortth" ($v.Header "load" "load")}}
+          {{template "sortth" ($v.Header "shards" "shards")}}{{if $showAlloc}}<th>allocation</th>{{end}}
+        </tr>
         {{$c := .Cluster}}{{$excluded := .Excluded}}{{$counts := .ShardCount}}{{$canCluster := .CanCluster}}
         {{range .Overview.Nodes}}
         <tr>
@@ -62,6 +76,7 @@
           <td><meter min="0" max="100" high="85" value="{{.DiskPercent}}"></meter> {{.DiskPercent}}%</td>
           <td>{{.CPUPercent}}%</td>
           <td>{{.Load}}</td>
+          <td>{{index $counts .Name}}</td>
           {{if $showAlloc}}
           <td class="actions">
             {{if index $excluded .Name}}
@@ -127,25 +142,44 @@
 
     <section class="panel">
       <h2>Shard allocation</h2>
-      <div class="shardgrid">
-        {{range .NodeShards}}
-        <div class="shardrow">
-          <span class="node{{if eq .Node "unassigned"}} crit{{end}}">{{.Node}}</span>
-          <span class="shards">
-            {{range .Shards}}
-            <span class="shard {{if eq .State "UNASSIGNED"}}u{{else if eq .State "RELOCATING"}}relo{{else if eq .PriRep "p"}}p{{else}}r{{end}}">{{.Shard}}<span class="tip">
+      <form class="inline-form" method="get" action="/c/{{.Cluster}}/overview">
+        {{if or (ne $v.Sort "name") $v.Desc}}<input type="hidden" name="sort" value="{{$v.Sort}}"><input type="hidden" name="dir" value="{{$v.Dir}}">{{end}}
+        {{if $v.Refresh}}<input type="hidden" name="refresh" value="{{$v.Refresh}}">{{end}}
+        <label>filter indices
+          <input type="search" name="q" value="{{$v.Q}}" maxlength="100" placeholder="name contains…" autocomplete="off">
+        </label>
+        <button type="submit">Filter</button>
+        {{if $v.Q}}<a class="muted" href="{{$v.ClearFilter}}">clear</a>{{end}}
+        <span class="muted">{{len .Matrix.Rows}} of {{.Matrix.Total}} indices</span>
+      </form>
+      {{with .Matrix}}{{if .Rows}}
+      {{/* No overflow container: it would clip the shard tooltips. A matrix
+           wider than the page scrolls the page, and the sticky header and
+           index column stay pinned to the viewport. */}}
+      <table class="shardgrid">
+        <thead><tr>
+          <th class="idx">index</th>
+          {{range .Nodes}}<th class="{{if eq . "unassigned"}}crit-text{{else if index $excluded .}}crit-text{{end}}">{{.}}</th>{{end}}
+        </tr></thead>
+        <tbody>
+        {{range .Rows}}
+        <tr>
+          <th class="idx" scope="row"><a class="health-{{.Health}}" href="/c/{{$c}}/indices/{{.Index}}">{{.Index}}</a></th>
+          {{range .Cells}}<td><span class="shards">{{range .}}<span class="shard {{if eq .State "UNASSIGNED"}}u{{else if eq .State "RELOCATING"}}relo{{else if eq .PriRep "p"}}p{{else}}r{{end}}" tabindex="0">{{.Shard}}<span class="tip">
               <b>{{.Index}}</b> · shard {{.Shard}} · {{if eq .PriRep "p"}}primary{{else}}replica{{end}}<br>
               state: {{.State}}{{if .Node}} on {{.Node}}{{end}}<br>
               {{if .Docs}}docs: {{.Docs}} · size: {{.Store}}<br>{{end}}
               {{if .Reason}}<span class="tip-crit">reason: {{.Reason}}</span><br>{{end}}
               {{if .Details}}<span class="tip-crit">{{.Details}}</span><br>{{end}}
               {{if .At}}since: {{.At}}{{end}}
-            </span></span>
-            {{end}}
-          </span>
-        </div>
+            </span></span>{{end}}</span></td>{{end}}
+        </tr>
         {{end}}
-      </div>
+        </tbody>
+      </table>
+      {{else}}
+      <p class="muted">No indices{{if $v.Q}} match <code>{{$v.Q}}</code>{{end}}.</p>
+      {{end}}{{end}}
       <p class="legend">
         <span class="shard p">n</span> primary
         <span class="shard r">n</span> replica
@@ -174,3 +208,4 @@
   </main>
 </body>
 </html>
+{{define "sortth"}}<th aria-sort="{{.Aria}}"><a class="sort {{.Class}}" href="{{.Href}}">{{.Label}}</a></th>{{end}}

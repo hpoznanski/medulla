@@ -68,6 +68,8 @@ func fakeES(t *testing.T) *httptest.Server {
 			w.Write([]byte(`{"version":{"number":"8.13.0"}}`))
 		case r.URL.Path == "/_cluster/health":
 			w.Write([]byte(`{"cluster_name":"t","status":"green","number_of_nodes":1}`))
+		case r.URL.Path == "/_cat/shards":
+			w.Write([]byte(`[{"index":"logs-1","shard":"0","prirep":"p","state":"STARTED","node":"es01"}]`))
 		default:
 			w.Write([]byte(`[]`))
 		}
