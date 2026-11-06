@@ -83,4 +83,12 @@ echo "$OUT" | grep -q 'topology.kubernetes.io/zone' && pass "zone spread rendere
 helm template test "$CHART" -f "$CHART/values-example.yaml" >/dev/null 2>&1 \
   && pass "values-example.yaml renders" || fail "values-example.yaml broken"
 
+# 13. values.schema.json rejects typos and wrong types at install time.
+render "${BASE[@]}" --set replica=3 >/dev/null 2>&1 \
+  && fail "typo'd top-level key accepted" || pass "unknown top-level key rejected"
+render "${BASE[@]}" --set service.type=Bogus >/dev/null 2>&1 \
+  && fail "invalid service.type accepted" || pass "invalid service.type rejected"
+render "${BASE[@]}" --set replicaCount=0 >/dev/null 2>&1 \
+  && fail "replicaCount=0 accepted" || pass "replicaCount=0 rejected"
+
 [ "$FAILED" -eq 0 ] && echo "ALL PASS" || exit 1
