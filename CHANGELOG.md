@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- CI no longer tags the container image `latest`. The v0.5.0 image was
+  published with a `latest` tag because `docker/metadata-action` adds one to
+  semver tags by default; the documented policy is version tags only.
+
 ## [0.5.0] - 2026-11-06
 
 ### Added

@@ -119,6 +119,9 @@ jobs:
         id: meta
         with:
           images: ghcr.io/${{ github.repository }}
+          # The README promises no `latest`; metadata-action adds one to
+          # semver tags unless told not to.
+          flavor: latest=false
           tags: |
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
