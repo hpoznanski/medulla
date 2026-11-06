@@ -1,0 +1,21 @@
+# Config for scripts/compat.sh. "dead" points at a port nothing listens on,
+# so the landing page always has an unreachable cluster to classify.
+listen: ":8080"
+
+clusters:
+  - name: compat
+    url: http://localhost:9200
+  - name: dead
+    url: http://127.0.0.1:1
+
+roles:
+  viewer:   {clusters: ["*"], permissions: [view]}
+  operator: {clusters: ["*"], permissions: [view, index:write, alias:write, template:write, snapshot:write, cluster:write, rest:full]}
+
+local_users:
+  - {name: reader, password: readerpw, roles: [viewer]}
+  - {name: writer, password: writerpw, roles: [operator]}
+
+session:
+  ttl: 1h
+  insecure_cookie: true

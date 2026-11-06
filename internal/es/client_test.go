@@ -2,12 +2,14 @@ package es
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/hpoznanski/medulla/internal/config"
 )
@@ -47,6 +49,9 @@ func TestFlavorDetection(t *testing.T) {
 	}{
 		{"es8", `{"version":{"number":"8.13.4"}}`, FlavorES8},
 		{"es7", `{"version":{"number":"7.17.9"}}`, FlavorES7},
+		{"es9", `{"version":{"number":"9.2.1"}}`, Flavor("es9")},
+		{"es10", `{"version":{"number":"10.0.0"}}`, Flavor("es10")},
+		{"garbage", `{"version":{"number":"x.y"}}`, FlavorUnknown},
 		{"opensearch", `{"version":{"number":"2.13.0","distribution":"opensearch"}}`, FlavorOpenSearch},
 		{"unknown", `{"version":{"number":"5.6.0"}}`, FlavorUnknown},
 	}
@@ -64,11 +69,18 @@ func TestFlavorDetection(t *testing.T) {
 	}
 }
 
-func TestInfoCached(t *testing.T) {
+// Info is shared through the read cache, but not forever: an in-place
+// upgrade must show the new version once the cache window passes.
+func TestInfoFollowsUpgrade(t *testing.T) {
+	old := cacheTTL
+	cacheTTL = 10 * time.Millisecond
+	t.Cleanup(func() { cacheTTL = old })
+
+	version := "8.19.7"
 	calls := 0
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		calls++
-		w.Write([]byte(`{"version":{"number":"8.0.0"}}`))
+		fmt.Fprintf(w, `{"version":{"number":%q}}`, version)
 	}))
 	t.Cleanup(srv.Close)
 
@@ -76,7 +88,12 @@ func TestInfoCached(t *testing.T) {
 	c.Info(context.Background())
 	c.Info(context.Background())
 	if calls != 1 {
-		t.Errorf("root endpoint called %d times, want 1", calls)
+		t.Errorf("root endpoint called %d times within the cache window, want 1", calls)
+	}
+	version = "9.2.1"
+	time.Sleep(20 * time.Millisecond)
+	if info, _ := c.Info(context.Background()); info.Flavor != "es9" || info.Version != "9.2.1" {
+		t.Errorf("after upgrade: %s %s, want es9 9.2.1", info.Flavor, info.Version)
 	}
 }
 

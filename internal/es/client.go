@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -34,9 +35,6 @@ type Client struct {
 	baseURL    *url.URL
 	authHeader string
 	http       *http.Client
-
-	mu   sync.Mutex
-	info *Info
 
 	cacheMu  sync.Mutex
 	cache    map[string]*cacheEntry
@@ -170,39 +168,30 @@ func decodeOK(cluster, path string, resp *Response, out any) error {
 	return json.Unmarshal(resp.Body, out)
 }
 
-// Info detects and caches the cluster flavor and version. The network fetch
-// runs outside the lock so concurrent callers don't serialize on slow
-// clusters; a rare duplicate fetch is harmless.
+// Info detects the cluster flavor and version through the shared read
+// cache — not cached for the process lifetime, so a rolling upgrade shows
+// the new version within one cache window instead of after a restart.
 func (c *Client) Info(ctx context.Context) (*Info, error) {
-	c.mu.Lock()
-	cached := c.info
-	c.mu.Unlock()
-	if cached != nil {
-		return cached, nil
-	}
-
 	var root struct {
 		Version struct {
 			Number       string `json:"number"`
 			Distribution string `json:"distribution"`
 		} `json:"version"`
 	}
-	if err := c.GetJSON(ctx, "/", &root); err != nil {
+	if err := c.GetJSONCached(ctx, "/", &root); err != nil {
 		return nil, err
 	}
 
 	info := &Info{Version: root.Version.Number, Flavor: FlavorUnknown}
-	switch {
-	case root.Version.Distribution == "opensearch":
+	if root.Version.Distribution == "opensearch" {
 		info.Flavor = FlavorOpenSearch
-	case strings.HasPrefix(root.Version.Number, "7."):
-		info.Flavor = FlavorES7
-	case strings.HasPrefix(root.Version.Number, "8."):
-		info.Flavor = FlavorES8
+	} else if major, _, _ := strings.Cut(root.Version.Number, "."); major != "" {
+		// Any Elasticsearch from 7 up is "es<major>" — 9 and later included,
+		// so a new major does not silently read as unknown.
+		if n, err := strconv.Atoi(major); err == nil && n >= 7 {
+			info.Flavor = Flavor("es" + major)
+		}
 	}
-	c.mu.Lock()
-	c.info = info
-	c.mu.Unlock()
 	return info, nil
 }
 
