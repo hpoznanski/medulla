@@ -6,20 +6,14 @@
   <title>Medulla — {{.Cluster}}</title>
   <link rel="icon" type="image/svg+xml" href="/static/logo.svg">
   <link rel="stylesheet" href="/static/style.css">
-  {{if .View.Refresh}}<meta http-equiv="refresh" content="{{.View.Refresh}}">{{end}}
+  {{template "metarefresh" .}}
 </head>
 <body>
   {{template "topbar" .}}
 
   <main>
   {{$v := .View}}
-  <nav class="refresh-bar" aria-label="auto-refresh">
-    <span class="muted">auto-refresh</span>
-    {{range $v.RefreshIntervals}}
-      <a href="{{$v.RefreshEvery .}}" {{if eq . $v.Refresh}}class="active" aria-current="true"{{end}}>{{if .}}{{.}}s{{else}}off{{end}}</a>
-    {{end}}
-    {{if .Updated}}<span class="muted">· updated {{.Updated}}</span>{{end}}
-  </nav>
+  {{template "refreshbar" .}}
   {{if .Notice}}<div class="banner notice">{{.Notice}}</div>{{end}}
   {{if .Error}}
     <div class="banner error">{{.Error}}</div>
@@ -143,7 +137,7 @@
     <section class="panel">
       <h2>Shard allocation</h2>
       <form class="inline-form" method="get" action="/c/{{.Cluster}}/overview">
-        {{if or (ne $v.Sort "name") $v.Desc}}<input type="hidden" name="sort" value="{{$v.Sort}}"><input type="hidden" name="dir" value="{{$v.Dir}}">{{end}}
+        {{if not $v.SortIsDefault}}<input type="hidden" name="sort" value="{{$v.Sort}}"><input type="hidden" name="dir" value="{{$v.Dir}}">{{end}}
         {{if $v.Refresh}}<input type="hidden" name="refresh" value="{{$v.Refresh}}">{{end}}
         <label>filter indices
           <input type="search" name="q" value="{{$v.Q}}" maxlength="100" placeholder="name contains…" autocomplete="off">
@@ -208,4 +202,3 @@
   </main>
 </body>
 </html>
-{{define "sortth"}}<th aria-sort="{{.Aria}}"><a class="sort {{.Class}}" href="{{.Href}}">{{.Label}}</a></th>{{end}}

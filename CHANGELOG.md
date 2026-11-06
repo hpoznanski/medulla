@@ -5,9 +5,41 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.6.0] - 2026-11-06
+
+### Added
+
+- Clusters landing page, cards or list: a toggle remembered in a preference
+  cookie (`HttpOnly`, `SameSite=Lax`, `Secure` unless `insecure_cookie`; only
+  `cards` or `list` are accepted). The list is a sortable table — health,
+  name, version, nodes, indices, docs, shards, unassigned, relocating, store
+  size, response time — with quick links to overview, indices and (when
+  permitted) console.
+- Problems first: clusters are ordered unreachable, red, yellow, green by
+  default in both layouts.
+- Health summary bar (`5 clusters · 2 unreachable · 3 yellow`), each count a
+  filter link (`?health=`).
+- Cluster name filter with native `<datalist>` suggestions while typing — no
+  JavaScript. Only clusters the user's roles can view are ever suggested.
+- Auto-refresh on the landing page (`off · 10s · 30s · 60s`), shared with the
+  overview.
+- Unreachable clusters are classified — `timeout`, `refused`, `dns`, `tls`,
+  `auth` (ES answered 401/403), `http NNN`, `error` — with the full error a
+  click away. Missing figures render as `—`, never `0`, and sort last in either
+  direction.
+- Response time per cluster.
+- Security test suite: no script, event handler, `javascript:` URL or inline
+  style in any template; CSP pinned; injection attempts on every list-page
+  parameter are neither reflected nor turned into off-origin links or a meta
+  refresh; tampered layout cookie ignored; hidden clusters never leak through
+  cards, counts or suggestions; ES credentials in a cluster URL never appear in
+  error text.
 
 ### Fixed
+
+- Landing page showed `0 indices · 0 docs` and no version when
+  `_cluster/stats` or `/` failed but health answered. It now shows `—` with a
+  `partial` badge and the cause.
 
 - CI no longer tags the container image `latest`. The v0.5.0 image was
   published with a `latest` tag because `docker/metadata-action` adds one to

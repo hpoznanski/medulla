@@ -14,28 +14,30 @@ import (
 func TestParseOverviewViewAllowlists(t *testing.T) {
 	tests := []struct {
 		query string
-		want  overviewView
+		want  listView
 	}{
-		{"", overviewView{Sort: "name"}},
-		{"sort=cpu", overviewView{Sort: "cpu", Desc: true}},
-		{"sort=cpu&dir=asc", overviewView{Sort: "cpu"}},
-		{"sort=name&dir=desc", overviewView{Sort: "name", Desc: true}},
-		{"sort=__proto__&dir=sideways", overviewView{Sort: "name"}},
-		{"refresh=30", overviewView{Sort: "name", Refresh: 30}},
-		{"refresh=1", overviewView{Sort: "name"}},
-		{"refresh=-10", overviewView{Sort: "name"}},
-		{"refresh=10;url=https://evil.example", overviewView{Sort: "name"}},
-		{"q=++logs-++", overviewView{Sort: "name", Q: "logs-"}},
+		{"", listView{Sort: "name"}},
+		{"sort=cpu", listView{Sort: "cpu", Desc: true}},
+		{"sort=cpu&dir=asc", listView{Sort: "cpu"}},
+		{"sort=name&dir=desc", listView{Sort: "name", Desc: true}},
+		{"sort=__proto__&dir=sideways", listView{Sort: "name"}},
+		{"refresh=30", listView{Sort: "name", Refresh: 30}},
+		{"refresh=1", listView{Sort: "name"}},
+		{"refresh=-10", listView{Sort: "name"}},
+		{"refresh=10;url=https://evil.example", listView{Sort: "name"}},
+		{"q=++logs-++", listView{Sort: "name", Q: "logs-"}},
 	}
 	for _, tt := range tests {
 		q, _ := url.ParseQuery(tt.query)
-		if got := parseOverviewView(q); got != tt.want {
+		got := parseListView(q, nodeSort)
+		got.spec = nil
+		if got != tt.want {
 			t.Errorf("%q: got %+v, want %+v", tt.query, got, tt.want)
 		}
 	}
 
 	long, _ := url.ParseQuery("q=" + strings.Repeat("ż", 500))
-	if got := parseOverviewView(long).Q; len([]rune(got)) != maxFilterLen {
+	if got := parseListView(long, nodeSort).Q; len([]rune(got)) != maxFilterLen {
 		t.Errorf("filter not capped: %d runes", len([]rune(got)))
 	}
 }
@@ -43,7 +45,7 @@ func TestParseOverviewViewAllowlists(t *testing.T) {
 // Links rebuild state from the parsed view, so every param survives a click
 // and nothing outside the allowlist leaks back into an href.
 func TestOverviewViewLinks(t *testing.T) {
-	v := overviewView{Sort: "cpu", Desc: true, Refresh: 10, Q: "a&b"}
+	v := listView{spec: nodeSort, Sort: "cpu", Desc: true, Refresh: 10, Q: "a&b"}
 
 	h := v.Header("cpu", "cpu")
 	if h.Aria != "descending" || !strings.Contains(h.Href, "dir=asc") {
@@ -81,14 +83,14 @@ func TestSortNodes(t *testing.T) {
 		return out
 	}
 	for _, tt := range []struct {
-		view overviewView
+		view listView
 		want []string
 	}{
-		{overviewView{Sort: "name"}, []string{"a", "b", "c"}},
-		{overviewView{Sort: "ip"}, []string{"a", "b", "c"}},               // numeric, not 10.0.0.10 < 10.0.0.2
-		{overviewView{Sort: "cpu", Desc: true}, []string{"a", "b", "c"}},  // ties stay A–Z
-		{overviewView{Sort: "load", Desc: true}, []string{"b", "c", "a"}}, // missing load last
-		{overviewView{Sort: "shards", Desc: true}, []string{"c", "a", "b"}},
+		{listView{Sort: "name"}, []string{"a", "b", "c"}},
+		{listView{Sort: "ip"}, []string{"a", "b", "c"}},               // numeric, not 10.0.0.10 < 10.0.0.2
+		{listView{Sort: "cpu", Desc: true}, []string{"a", "b", "c"}},  // ties stay A–Z
+		{listView{Sort: "load", Desc: true}, []string{"b", "c", "a"}}, // missing load last
+		{listView{Sort: "shards", Desc: true}, []string{"c", "a", "b"}},
 	} {
 		sortNodes(nodes, tt.view, map[string]int{"c": 7, "a": 1})
 		if got := names(); !slices.Equal(got, tt.want) {

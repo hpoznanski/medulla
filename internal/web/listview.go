@@ -13,33 +13,46 @@ import (
 )
 
 // refreshIntervals are the only auto-refresh periods offered, in seconds;
-// 0 is off. Each refresh re-runs every ES call behind the overview, so there
-// is a floor and no free-form value.
+// 0 is off. Each refresh re-runs every ES call behind the page, so there is
+// a floor and no free-form value.
 var refreshIntervals = []int{0, 10, 30, 60}
-
-// nodeSortKeys maps each sortable Nodes column to whether it sorts
-// descending by default: metrics open worst-first, identifiers A–Z.
-var nodeSortKeys = map[string]bool{
-	"name": false, "ip": false,
-	"heap": true, "disk": true, "cpu": true, "load": true, "shards": true,
-}
 
 const maxFilterLen = 100
 
-// overviewView is the overview's URL state. Every field is parsed against an
+// sortSpec lists a table's sortable columns, each mapped to whether it sorts
+// descending by default (metrics open worst-first, identifiers A–Z), plus
+// the column the page sorts by when the URL names none.
+type sortSpec struct {
+	def  string
+	keys map[string]bool
+	// health enables the landing page's ?health= filter.
+	health bool
+}
+
+var nodeSort = &sortSpec{def: "name", keys: map[string]bool{
+	"name": false, "ip": false,
+	"heap": true, "disk": true, "cpu": true, "load": true, "shards": true,
+}}
+
+// healthFilters are the values ?health= accepts on the landing page.
+var healthFilters = []string{"unreachable", "red", "yellow", "green"}
+
+// listView is a page's URL state. Every field is parsed against an
 // allowlist, and every link the page emits is rebuilt from it — never from
 // the raw query — so no user-supplied string reaches an href or the meta
-// refresh except the index filter, which html/template escapes as a value.
-type overviewView struct {
+// refresh except the name filter, which html/template escapes as a value.
+type listView struct {
+	spec    *sortSpec
 	Sort    string
 	Desc    bool
 	Refresh int
 	Q       string
+	Health  string
 }
 
-func parseOverviewView(q url.Values) overviewView {
-	v := overviewView{Sort: "name"}
-	if _, ok := nodeSortKeys[q.Get("sort")]; ok {
+func parseListView(q url.Values, spec *sortSpec) listView {
+	v := listView{spec: spec, Sort: spec.def}
+	if _, ok := spec.keys[q.Get("sort")]; ok {
 		v.Sort = q.Get("sort")
 	}
 	switch q.Get("dir") {
@@ -47,7 +60,7 @@ func parseOverviewView(q url.Values) overviewView {
 	case "desc":
 		v.Desc = true
 	default:
-		v.Desc = nodeSortKeys[v.Sort]
+		v.Desc = spec.keys[v.Sort]
 	}
 	if n, err := strconv.Atoi(q.Get("refresh")); err == nil && slices.Contains(refreshIntervals, n) {
 		v.Refresh = n
@@ -56,19 +69,27 @@ func parseOverviewView(q url.Values) overviewView {
 	if utf8.RuneCountInString(v.Q) > maxFilterLen {
 		v.Q = string([]rune(v.Q)[:maxFilterLen])
 	}
+	if spec.health && slices.Contains(healthFilters, q.Get("health")) {
+		v.Health = q.Get("health")
+	}
 	return v
 }
 
-func (v overviewView) Dir() string {
+func (v listView) Dir() string {
 	if v.Desc {
 		return "desc"
 	}
 	return "asc"
 }
 
-func (v overviewView) query() string {
+// SortIsDefault reports whether sort and dir can be left out of a link.
+func (v listView) SortIsDefault() bool {
+	return v.Sort == v.spec.def && v.Desc == v.spec.keys[v.spec.def]
+}
+
+func (v listView) query() string {
 	q := url.Values{}
-	if v.Sort != "name" || v.Desc {
+	if !v.SortIsDefault() {
 		q.Set("sort", v.Sort)
 		q.Set("dir", v.Dir())
 	}
@@ -78,23 +99,42 @@ func (v overviewView) query() string {
 	if v.Q != "" {
 		q.Set("q", v.Q)
 	}
+	if v.Health != "" {
+		q.Set("health", v.Health)
+	}
 	return "?" + q.Encode()
 }
 
 // RefreshEvery links to the same view auto-refreshing every n seconds.
-func (v overviewView) RefreshEvery(n int) string {
+func (v listView) RefreshEvery(n int) string {
 	v.Refresh = n
 	return v.query()
 }
 
-// ClearFilter links to the same view without the index filter.
-func (v overviewView) ClearFilter() string {
+// ClearFilter links to the same view without the name filter.
+func (v listView) ClearFilter() string {
 	v.Q = ""
 	return v.query()
 }
 
-// RefreshIntervals is exposed for the template's control row.
-func (overviewView) RefreshIntervals() []int { return refreshIntervals }
+// HealthLink links to the same view showing only clusters in health h
+// ("" for all).
+func (v listView) HealthLink(h string) string {
+	v.Health = h
+	return v.query()
+}
+
+// LayoutLink links to the same view in another landing-page layout.
+func (v listView) LayoutLink(layout string) string {
+	q := v.query()
+	if q != "?" {
+		q += "&"
+	}
+	return q + "layout=" + url.QueryEscape(layout)
+}
+
+// RefreshIntervals is exposed for the shared refresh bar.
+func (listView) RefreshIntervals() []int { return refreshIntervals }
 
 type sortHeader struct {
 	Label, Href, Class, Aria string
@@ -102,7 +142,7 @@ type sortHeader struct {
 
 // Header describes a sortable column heading: clicking the active column
 // flips direction, any other column starts at its default direction.
-func (v overviewView) Header(key, label string) sortHeader {
+func (v listView) Header(key, label string) sortHeader {
 	h := sortHeader{Label: label, Aria: "none"}
 	next := v
 	next.Sort = key
@@ -111,7 +151,7 @@ func (v overviewView) Header(key, label string) sortHeader {
 		h.Class = "sorted " + v.Dir()
 		h.Aria = v.Dir() + "ending"
 	} else {
-		next.Desc = nodeSortKeys[key]
+		next.Desc = v.spec.keys[key]
 	}
 	h.Href = next.query()
 	return h
@@ -119,7 +159,7 @@ func (v overviewView) Header(key, label string) sortHeader {
 
 // sortNodes orders the Nodes table in place; ties fall back to name A–Z so
 // equal rows don't shuffle between refreshes.
-func sortNodes(nodes []es.NodeInfo, v overviewView, shards map[string]int) {
+func sortNodes(nodes []es.NodeInfo, v listView, shards map[string]int) {
 	slices.SortStableFunc(nodes, func(a, b es.NodeInfo) int {
 		var c int
 		switch v.Sort {

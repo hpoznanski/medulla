@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
-	"sync"
 	"time"
 
 	"github.com/hpoznanski/medulla/internal/auth"
@@ -66,85 +65,6 @@ func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/login", http.StatusSeeOther)
 }
 
-type clusterStatus struct {
-	Name       string
-	Error      string
-	Status     string
-	Nodes      int
-	Indices    int
-	Docs       int64
-	Shards     int
-	Unassigned int
-	Flavor     string
-	Version    string
-}
-
-type homeData struct {
-	pageData
-	Statuses []clusterStatus
-}
-
-func (s *Server) handleHome(w http.ResponseWriter, r *http.Request) {
-	sess := sessionFrom(r)
-	visible := s.rbac.Clusters(sess.Roles, s.clusters.Names())
-	if len(visible) == 0 {
-		http.Error(w, "no clusters visible for your roles", http.StatusForbidden)
-		return
-	}
-
-	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
-	defer cancel()
-
-	// One goroutine per visible cluster, each writing its own slot: bounded by
-	// the config, and every one is joined before render.
-	statuses := make([]clusterStatus, len(visible))
-	var wg sync.WaitGroup
-	for i, name := range visible {
-		wg.Go(func() {
-			st := clusterStatus{Name: name}
-			client, err := s.clusters.Get(name)
-			if err != nil {
-				st.Error = err.Error()
-				statuses[i] = st
-				return
-			}
-			var health es.HealthInfo
-			if err := client.GetJSON(ctx, "/_cluster/health", &health); err != nil {
-				st.Error = err.Error()
-				statuses[i] = st
-				return
-			}
-			st.Status = health.Status
-			st.Nodes = health.NumberOfNodes
-			st.Shards = health.ActiveShards
-			st.Unassigned = health.UnassignedShards
-			var stats struct {
-				Indices struct {
-					Count int `json:"count"`
-					Docs  struct {
-						Count int64 `json:"count"`
-					} `json:"docs"`
-				} `json:"indices"`
-			}
-			if err := client.GetJSON(ctx, "/_cluster/stats", &stats); err == nil {
-				st.Indices = stats.Indices.Count
-				st.Docs = stats.Indices.Docs.Count
-			}
-			if info, err := client.Info(ctx); err == nil {
-				st.Flavor = string(info.Flavor)
-				st.Version = info.Version
-			}
-			statuses[i] = st
-		})
-	}
-	wg.Wait()
-
-	s.render(w, "clusters.html", homeData{
-		pageData: pageData{User: sess.User, Roles: sess.Roles, Clusters: visible},
-		Statuses: statuses,
-	})
-}
-
 type pageData struct {
 	User       string
 	Roles      []string
@@ -168,7 +88,7 @@ type overviewData struct {
 	ShardCount map[string]int  // node name -> shards still held
 	CanCluster bool
 	Notice     string
-	View       overviewView
+	View       listView
 	Updated    string
 
 	AllocationValues []string
@@ -187,7 +107,7 @@ func (s *Server) handleOverview(w http.ResponseWriter, r *http.Request) {
 	cluster := r.PathValue("cluster")
 	client := clientFrom(r)
 	page := s.page(r, "overview")
-	view := parseOverviewView(r.URL.Query())
+	view := parseListView(r.URL.Query(), nodeSort)
 
 	overview, err := client.Overview(r.Context())
 	if err != nil {

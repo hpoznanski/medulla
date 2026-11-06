@@ -17,7 +17,7 @@ Medulla is the brain stem: small, always on, controls the vital functions.
 
 ## Features
 
-- **Clusters landing page** — every cluster at a glance: health, version/flavor, nodes, indices, docs, unassigned shards. Cluster switcher on every page.
+- **Clusters landing page** — every cluster at a glance as cards or a sortable list: health, version/flavor, nodes, indices, docs, shards, unassigned/relocating, store size, response time. Problems first, a health summary that filters, a name filter with native suggestions, opt-in auto-refresh; unreachable clusters show the classified cause (timeout, refused, dns, tls, auth). Cluster switcher on every page.
 - **Overview** — cluster totals (indices, docs, store size), a sortable node table (heap/disk/CPU/load/shards), an index × node shard allocation matrix with an index filter and per-shard hover details, opt-in auto-refresh, and an *allocation explain* panel that shows the actual root cause for every unassigned shard (deciders parsed, grouped by cause).
 - **Shard routing** — drain a single node with one click (type-name-to-confirm), showing live progress until it reports *drained — safe to stop*; cluster-wide `allocation.enable` / `rebalance.enable` switches, with a standing warning while any restriction is in place.
 - **Index management** — create, delete (type-name-to-confirm), open/close, refresh, flush, force-merge; settings/mappings/aliases detail view; edit or reset any dynamic index setting, with ES defaults shown alongside what is explicitly set.
@@ -241,10 +241,10 @@ Published to GitHub Container Registry on every version tag, built for **`linux/
 docker run -d --name medulla -p 8080:8080 \
   -v /etc/medulla/config.yaml:/etc/medulla/config.yaml:ro \
   -e SESSION_SECRET \
-  ghcr.io/hpoznanski/medulla:0.5.0
+  ghcr.io/hpoznanski/medulla:0.6.0
 ```
 
-Tags are `MAJOR.MINOR.PATCH` and `MAJOR.MINOR` (`0.5.0`, `0.5`). **There is no `latest`** — pin a version deliberately rather than having an image change under you on the next `docker pull`.
+Tags are `MAJOR.MINOR.PATCH` and `MAJOR.MINOR` (`0.6.0`, `0.6`). **There is no `latest`** — pin a version deliberately rather than having an image change under you on the next `docker pull`.
 
 Two consequences of the `FROM scratch` image worth knowing before you deploy it:
 
@@ -254,7 +254,7 @@ Two consequences of the `FROM scratch` image worth knowing before you deploy it:
 Verify what you are running before you trust it:
 
 ```sh
-docker buildx imagetools inspect ghcr.io/hpoznanski/medulla:0.5.0   # both platforms listed
+docker buildx imagetools inspect ghcr.io/hpoznanski/medulla:0.6.0   # both platforms listed
 ```
 
 ## Production deployment (Kubernetes)
@@ -262,7 +262,7 @@ docker buildx imagetools inspect ghcr.io/hpoznanski/medulla:0.5.0   # both platf
 Helm chart in [`deploy/helm/medulla`](deploy/helm/medulla) — hardened defaults (nonroot, read-only rootfs, no capabilities, no SA token), config-checksum rollouts, zone spreading, PDB. See the [chart README](deploy/helm/medulla/README.md) for installation, secret handling, and the security model.
 
 ```sh
-helm install medulla oci://ghcr.io/hpoznanski/charts/medulla --version 0.5.0 -f my-values.yaml
+helm install medulla oci://ghcr.io/hpoznanski/charts/medulla --version 0.6.0 -f my-values.yaml
 ```
 
 ## Operations
@@ -347,7 +347,7 @@ Stateless, so an upgrade is a rolling image bump: no migrations, no schema, noth
 | `rest:full permission required for write requests` | `rest:get` allows GET and HEAD only | Grant `rest:full` if the user should write |
 | Everyone logged out after a restart | No `session.secret`, so an ephemeral key was generated | Set `session.secret`. Startup logs `session secret not set` at WARN |
 | Login works on one replica, not another | Replicas have different `session.secret` values | Share one secret across all replicas |
-| Cluster card shows an error on the landing page | ES unreachable, bad credentials, or TLS failure | The card shows the raw error. Certificate problems need `tls.ca_file` |
+| Cluster shows `unreachable` on the landing page | The badge names the cause: `timeout`, `refused`, `dns`, `tls`, `auth` (ES rejected Medulla's credentials), `http NNN` | Full error is on the card, or a click on the badge in list view. `tls` needs `tls.ca_file`; `auth` means the cluster's `auth` block is wrong |
 | Overview slow or truncated on a sick cluster | Each ES call allows 30s; the HTTP response deadline is 60s | Fix the cluster; Medulla surfaces what returns in time |
 | Audit log shows the ingress IP for everyone | `trusted_proxies` unset | Add your ingress CIDRs |
 | Node stuck on `draining · N left` | Fewer nodes than `replicas + 1` | See [Draining a node](#draining-and-decommissioning-a-node) |
@@ -366,7 +366,7 @@ Fixed unless the table says otherwise. All are compile-time constants — delibe
 | Graceful shutdown | 10s | No |
 | Landing page cluster probe | 5s for all clusters, queried in parallel | No |
 | Allocation explains per overview | 8 shards | No |
-| Overview auto-refresh | off, 10s, 30s or 60s | Per page, `?refresh=` |
+| Auto-refresh (overview, landing page) | off, 10s, 30s or 60s | Per page, `?refresh=` |
 | ES response size read | 64 MB | No |
 | REST console history | 20 entries; bodies over 800 bytes stored without the body | No |
 | `_cat` endpoints exposed | 16, allowlisted | No |

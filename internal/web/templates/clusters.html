@@ -6,10 +6,11 @@
   <title>Medulla — clusters</title>
   <link rel="icon" type="image/svg+xml" href="/static/logo.svg">
   <link rel="stylesheet" href="/static/style.css">
+  {{template "metarefresh" .}}
 </head>
 <body>
   <header class="topbar">
-    <span class="brand"><span class="accent">◉</span> Medulla</span>
+    <a class="brand" href="/"><span class="accent">◉</span> Medulla</a>
     <span class="user">
       {{.User}}
       {{range .Roles}}<span class="chip">{{.}}</span>{{end}}
@@ -18,28 +19,123 @@
   </header>
 
   <main>
+    {{$v := .View}}{{$budget := .Budget}}
+    {{template "refreshbar" .}}
+
+    <section class="panel home-toolbar">
+      <nav class="health-summary" aria-label="filter by health">
+        <a href="{{$v.HealthLink ""}}" class="{{if not $v.Health}}active{{end}}" {{if not $v.Health}}aria-current="true"{{end}}><b>{{.Total}}</b> clusters</a>
+        {{with index .Counts "unreachable"}}<a href="{{$v.HealthLink "unreachable"}}" class="{{if eq $v.Health "unreachable"}}active{{end}}"><span class="dot crit"></span><b>{{.}}</b> unreachable</a>{{end}}
+        {{with index .Counts "red"}}<a href="{{$v.HealthLink "red"}}" class="{{if eq $v.Health "red"}}active{{end}}"><span class="dot red"></span><b>{{.}}</b> red</a>{{end}}
+        {{with index .Counts "yellow"}}<a href="{{$v.HealthLink "yellow"}}" class="{{if eq $v.Health "yellow"}}active{{end}}"><span class="dot yellow"></span><b>{{.}}</b> yellow</a>{{end}}
+        {{with index .Counts "green"}}<a href="{{$v.HealthLink "green"}}" class="{{if eq $v.Health "green"}}active{{end}}"><span class="dot green"></span><b>{{.}}</b> green</a>{{end}}
+      </nav>
+
+      <form class="home-filter" method="get" action="/" role="search">
+        {{if not $v.SortIsDefault}}<input type="hidden" name="sort" value="{{$v.Sort}}"><input type="hidden" name="dir" value="{{$v.Dir}}">{{end}}
+        {{if $v.Refresh}}<input type="hidden" name="refresh" value="{{$v.Refresh}}">{{end}}
+        {{if $v.Health}}<input type="hidden" name="health" value="{{$v.Health}}">{{end}}
+        {{/* datalist: the browser suggests matching cluster names as you
+             type — native, no script. Enter applies the filter. */}}
+        <input type="search" name="q" value="{{$v.Q}}" list="cluster-names" maxlength="100"
+               placeholder="filter clusters…" aria-label="filter clusters by name" autocomplete="off" autofocus>
+        <datalist id="cluster-names">{{range .Clusters}}<option value="{{.}}">{{end}}</datalist>
+        <button type="submit">Filter</button>
+        {{if $v.Q}}<a class="muted" href="{{$v.ClearFilter}}">clear</a>{{end}}
+      </form>
+
+      <nav class="layout-toggle" aria-label="layout">
+        <a href="{{$v.LayoutLink "cards"}}" class="{{if eq .Layout "cards"}}active{{end}}" {{if eq .Layout "cards"}}aria-current="true"{{end}}>▦ cards</a>
+        <a href="{{$v.LayoutLink "list"}}" class="{{if eq .Layout "list"}}active{{end}}" {{if eq .Layout "list"}}aria-current="true"{{end}}>☰ list</a>
+      </nav>
+    </section>
+
+    {{if not .Statuses}}
+    <section class="panel">
+      <p class="muted">No clusters match{{if $v.Q}} <code>{{$v.Q}}</code>{{end}}{{if $v.Health}} with health <code>{{$v.Health}}</code>{{end}}.
+        <a href="/">Show all</a></p>
+    </section>
+
+    {{else if eq .Layout "list"}}
+    <section class="panel">
+      <div class="scroll">
+      <table class="cluster-list">
+        <thead><tr>
+          {{template "sortth" ($v.Header "health" "health")}}{{template "sortth" ($v.Header "name" "cluster")}}
+          {{template "sortth" ($v.Header "version" "version")}}{{template "sortth" ($v.Header "nodes" "nodes")}}
+          {{template "sortth" ($v.Header "indices" "indices")}}{{template "sortth" ($v.Header "docs" "docs")}}
+          {{template "sortth" ($v.Header "shards" "shards")}}{{template "sortth" ($v.Header "unassigned" "unassigned")}}
+          {{template "sortth" ($v.Header "relocating" "relocating")}}{{template "sortth" ($v.Header "store" "store")}}
+          {{template "sortth" ($v.Header "latency" "response")}}<th>open</th>
+        </tr></thead>
+        <tbody>
+        {{range .Statuses}}
+        <tr class="{{if .Unreachable}}row-crit{{end}}">
+          <td><span class="health-cell">
+            <span class="dot {{if .Unreachable}}crit{{else}}{{.Health}}{{end}}"></span>
+            {{if .Unreachable}}
+              <details class="why"><summary><span class="badge health-red">{{.Reason}}</span></summary><code>{{.Error}}</code></details>
+            {{else}}
+              <span class="health-{{.Health}}">{{.Health}}</span>
+              {{if .Partial}}<details class="why"><summary><span class="badge health-yellow">partial</span></summary><code>{{.Partial}}</code></details>{{end}}
+            {{end}}
+          </span></td>
+          <td><a class="cluster-link" href="/c/{{.Name}}/overview">{{.Name}}</a></td>
+          <td>{{if .HasInfo}}{{.Flavor}} {{.Version}}{{else}}<span class="muted">—</span>{{end}}</td>
+          {{if .Unreachable}}
+          <td class="muted">—</td><td class="muted">—</td><td class="muted">—</td><td class="muted">—</td>
+          <td class="muted">—</td><td class="muted">—</td><td class="muted">—</td>
+          {{else}}
+          <td>{{.Nodes}}</td>
+          <td>{{if .HasStats}}{{.Indices}}{{else}}<span class="muted">—</span>{{end}}</td>
+          <td>{{if .HasStats}}{{.Docs}}{{else}}<span class="muted">—</span>{{end}}</td>
+          <td>{{.Shards}}</td>
+          <td class="{{if .Unassigned}}crit-text{{end}}">{{.Unassigned}}</td>
+          <td class="{{if .Relocating}}warn-text{{end}}">{{.Relocating}}</td>
+          <td>{{if .HasStats}}{{.Store}}{{else}}<span class="muted">—</span>{{end}}</td>
+          {{end}}
+          <td>{{if .Unreachable}}{{if eq .Reason "timeout"}}<span class="crit-text">timeout ({{$budget}})</span>{{else}}<span class="muted">—</span>{{end}}{{else}}{{.LatencyMS}} ms{{end}}</td>
+          <td><span class="quick-links">
+            <a href="/c/{{.Name}}/overview">overview</a>
+            <a href="/c/{{.Name}}/indices">indices</a>
+            {{if .CanConsole}}<a href="/c/{{.Name}}/console">console</a>{{end}}
+          </span></td>
+        </tr>
+        {{end}}
+        </tbody>
+      </table>
+      </div>
+    </section>
+
+    {{else}}
     <section class="clusters-grid">
       {{range .Statuses}}
-      <a class="cluster-card {{if .Error}}unreachable{{end}}" href="/c/{{.Name}}/overview">
+      <a class="cluster-card {{if .Unreachable}}unreachable{{end}}" href="/c/{{.Name}}/overview">
         <span class="cluster-name">
-          <span class="dot {{if .Error}}crit{{else}}{{.Status}}{{end}}"></span>
+          <span class="dot {{if .Unreachable}}crit{{else}}{{.Health}}{{end}}"></span>
           {{.Name}}
+          {{if .Unreachable}}<span class="badge health-red">{{.Reason}}</span>{{else if .Partial}}<span class="badge health-yellow">partial</span>{{end}}
         </span>
-        {{if .Error}}
+        {{if .Unreachable}}
         <span class="cluster-error">{{.Error}}</span>
+        {{if eq .Reason "timeout"}}<span class="cluster-meta">no answer within {{$budget}}</span>{{end}}
         {{else}}
-        <span class="cluster-meta">{{.Flavor}} {{.Version}}</span>
+        <span class="cluster-meta">{{if .HasInfo}}{{.Flavor}} {{.Version}}{{else}}version —{{end}} · {{.LatencyMS}} ms</span>
         <span class="cluster-stats">
           <span><b>{{.Nodes}}</b> nodes</span>
-          <span><b>{{.Indices}}</b> indices</span>
-          <span><b>{{.Docs}}</b> docs</span>
+          <span><b>{{if .HasStats}}{{.Indices}}{{else}}—{{end}}</b> indices</span>
+          <span><b>{{if .HasStats}}{{.Docs}}{{else}}—{{end}}</b> docs</span>
           <span><b>{{.Shards}}</b> shards</span>
+          {{if .HasStats}}<span><b>{{.Store}}</b></span>{{end}}
           {{if .Unassigned}}<span class="crit-text"><b>{{.Unassigned}}</b> unassigned</span>{{end}}
+          {{if .Relocating}}<span class="warn-text"><b>{{.Relocating}}</b> relocating</span>{{end}}
         </span>
+        {{if .Partial}}<span class="cluster-error partial">{{.Partial}}</span>{{end}}
         {{end}}
       </a>
       {{end}}
     </section>
+    {{end}}
   </main>
 </body>
 </html>

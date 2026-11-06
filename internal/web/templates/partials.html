@@ -31,3 +31,20 @@
   </span>
 </header>
 {{end}}
+
+{{/* Shared by every page with a listView in .View and a render time in
+     .Updated. A bare meta refresh reloads the current URL with all its
+     state; the content is an allowlisted integer. */}}
+{{define "metarefresh"}}{{if .View.Refresh}}<meta http-equiv="refresh" content="{{.View.Refresh}}">{{end}}{{end}}
+
+{{define "refreshbar"}}{{$v := .View}}
+<nav class="refresh-bar" aria-label="auto-refresh">
+  <span class="muted">auto-refresh</span>
+  {{range $v.RefreshIntervals}}
+    <a href="{{$v.RefreshEvery .}}" {{if eq . $v.Refresh}}class="active" aria-current="true"{{end}}>{{if .}}{{.}}s{{else}}off{{end}}</a>
+  {{end}}
+  {{if .Updated}}<span class="muted">· updated {{.Updated}}</span>{{end}}
+</nav>
+{{end}}
+
+{{define "sortth"}}<th aria-sort="{{.Aria}}"><a class="sort {{.Class}}" href="{{.Href}}">{{.Label}}</a></th>{{end}}
